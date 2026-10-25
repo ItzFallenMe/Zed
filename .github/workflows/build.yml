@@ -114,15 +114,28 @@ jobs:
           name: zed-release-apk
           path: out
 
+      - name: Prepare release notes
+        run: |
+          SHA=$(sha256sum out/zed-release.apk | cut -d' ' -f1)
+          cat > notes.md <<EOF
+          Zed ${{ github.ref_name }} — signed release APK built by GitHub Actions.
+
+          **Install:** download \`zed-release.apk\`. If Play Protect warns, see
+          [INSTALL.md](https://github.com/ItzFallenMe/Zed/blob/main/INSTALL.md) — tap
+          *More details → Install anyway*.
+
+          **First run:** Zed asks for a free Gemini key and a free Groq key, then for the
+          capabilities you want to grant.
+
+          Wake word: **"Zed"** (configurable).
+
+          SHA-256: \`$SHA\`
+          EOF
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           name: Zed ${{ github.ref_name }}
           files: out/zed-release.apk
           generate_release_notes: true
-          body: |
-            Zed ${{ github.ref_name }} — signed release APK built by GitHub Actions.
-
-            **Install:** download `zed-release.apk`, allow installs from unknown sources, then open the app and grant the capabilities you want.
-
-            Wake phrase: **"Bolo Zed"** (configurable).
+          body_path: notes.md

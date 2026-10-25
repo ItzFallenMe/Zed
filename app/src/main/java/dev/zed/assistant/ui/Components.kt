@@ -205,12 +205,24 @@ fun VoiceHero(
                     color = Color.White.copy(alpha = 0.65f)
                 )
             }
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            ZedAvatar(
+                mood = when {
+                    armed -> AvatarMood.GUARDED
+                    thinking -> AvatarMood.THINKING
+                    speaking -> AvatarMood.SPEAKING
+                    listening -> AvatarMood.LISTENING
+                    else -> AvatarMood.IDLE
+                },
+                size = 124
+            )
+            Spacer(modifier = Modifier.height(14.dp))
             Waveform(
                 active = active,
-                modifier = Modifier.fillMaxWidth().height(72.dp)
+                modifier = Modifier.fillMaxWidth().height(28.dp),
+                color = Color.White.copy(alpha = 0.75f)
             )
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = status,
                 style = MaterialTheme.typography.titleSmall,

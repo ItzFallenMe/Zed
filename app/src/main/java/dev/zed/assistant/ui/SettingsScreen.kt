@@ -65,6 +65,8 @@ fun SettingsScreen(
     val memory = remember { MemoryStore(context) }
 
     var apiKey by remember { mutableStateOf(prefs.apiKey) }
+    var groqKey by remember { mutableStateOf(prefs.groqKey) }
+    var userName by remember { mutableStateOf(prefs.userName) }
     var model by remember { mutableStateOf(prefs.model) }
     var wakePhrase by remember { mutableStateOf(prefs.wakePhrase) }
     var customInstructions by remember { mutableStateOf(prefs.customInstructions) }
@@ -144,6 +146,47 @@ fun SettingsScreen(
             Text(
                 text = "Stored in this app's private storage and used with the free Gemini tier. " +
                     "Without a key, every offline command still works.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
+            DividerLine()
+            OutlinedTextField(
+                value = groqKey,
+                onValueChange = {
+                    groqKey = it
+                    prefs.groqKey = it
+                    prefs.keysConfigured = it.isNotBlank() && prefs.apiKey.isNotBlank()
+                },
+                label = { Text("Groq API key") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            )
+            TextButton(
+                onClick = { uriHandler.openUri("https://console.groq.com/keys") },
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Get a free Groq key",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZedWhite
+                )
+            }
+            DividerLine()
+            OutlinedTextField(
+                value = userName,
+                onValueChange = {
+                    userName = it
+                    prefs.userName = it
+                },
+                label = { Text("Your name") },
+                singleLine = true,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "Zed uses this to greet you and to know whose voice it is.",
                 style = MaterialTheme.typography.bodySmall,
                 color = ZedMuted
             )

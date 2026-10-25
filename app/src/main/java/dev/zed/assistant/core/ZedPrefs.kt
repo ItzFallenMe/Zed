@@ -11,21 +11,39 @@ class ZedPrefs(context: Context) {
     private val sp: SharedPreferences =
         context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
+    /** Google AI Studio key. Powers the realtime voice conversation. */
     var apiKey: String
         get() = sp.getString(KEY_API_KEY, "") ?: ""
         set(value) = sp.edit().putString(KEY_API_KEY, value.trim()).apply()
+
+    /** Groq key. Powers fast text reasoning and decides which tools to run. */
+    var groqKey: String
+        get() = sp.getString(KEY_GROQ_KEY, "") ?: ""
+        set(value) = sp.edit().putString(KEY_GROQ_KEY, value.trim()).apply()
+
+    var groqModel: String
+        get() = sp.getString(KEY_GROQ_MODEL, DEFAULT_GROQ_MODEL) ?: DEFAULT_GROQ_MODEL
+        set(value) = sp.edit()
+            .putString(KEY_GROQ_MODEL, value.trim().ifBlank { DEFAULT_GROQ_MODEL })
+            .apply()
 
     var model: String
         get() = sp.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
         set(value) = sp.edit().putString(KEY_MODEL, value.trim().ifBlank { DEFAULT_MODEL }).apply()
 
+    var keysConfigured: Boolean
+        get() = apiKey.isNotBlank() && groqKey.isNotBlank()
+        set(value) = sp.edit().putBoolean(KEY_KEYS_CONFIGURED, value).apply()
+
     var wakeEnabled: Boolean
-        get() = sp.getBoolean(KEY_WAKE_ENABLED, false)
+        get() = sp.getBoolean(KEY_WAKE_ENABLED, true)
         set(value) = sp.edit().putBoolean(KEY_WAKE_ENABLED, value).apply()
 
     var wakePhrase: String
-        get() = sp.getString(KEY_WAKE_PHRASE, "bolo zed") ?: "bolo zed"
-        set(value) = sp.edit().putString(KEY_WAKE_PHRASE, value.trim().lowercase()).apply()
+        get() = sp.getString(KEY_WAKE_PHRASE, "zed") ?: "zed"
+        set(value) = sp.edit()
+            .putString(KEY_WAKE_PHRASE, value.trim().lowercase().ifBlank { "zed" })
+            .apply()
 
     var speakReplies: Boolean
         get() = sp.getBoolean(KEY_SPEAK_REPLIES, true)
@@ -34,6 +52,11 @@ class ZedPrefs(context: Context) {
     var assistantName: String
         get() = sp.getString(KEY_NAME, "Zed") ?: "Zed"
         set(value) = sp.edit().putString(KEY_NAME, value.trim().ifBlank { "Zed" }).apply()
+
+    /** What Zed calls the owner. Used for greetings and voice recognition. */
+    var userName: String
+        get() = sp.getString(KEY_USER_NAME, "") ?: ""
+        set(value) = sp.edit().putString(KEY_USER_NAME, value.trim()).apply()
 
     var customInstructions: String
         get() = sp.getString(KEY_CUSTOM_INSTRUCTIONS, "") ?: ""
@@ -47,7 +70,7 @@ class ZedPrefs(context: Context) {
         get() = sp.getBoolean(KEY_BEST_VOICE, true)
         set(value) = sp.edit().putBoolean(KEY_BEST_VOICE, value).apply()
 
-    /** Exact system TTS voice name; blank means "pick the best". */
+    /** Exact system TTS voice name; blank means \"pick the best\". */
     var ttsVoiceName: String
         get() = sp.getString(KEY_TTS_VOICE, "") ?: ""
         set(value) = sp.edit().putString(KEY_TTS_VOICE, value.trim()).apply()
@@ -77,13 +100,29 @@ class ZedPrefs(context: Context) {
         get() = sp.getInt(KEY_SENSITIVITY, 2)
         set(value) = sp.edit().putInt(KEY_SENSITIVITY, value).apply()
 
+    /** The floating orb is shown automatically whenever Zed is awake. */
     var floatingBubble: Boolean
-        get() = sp.getBoolean(KEY_FLOATING_BUBBLE, false)
+        get() = sp.getBoolean(KEY_FLOATING_BUBBLE, true)
         set(value) = sp.edit().putBoolean(KEY_FLOATING_BUBBLE, value).apply()
 
     var onboardingDone: Boolean
         get() = sp.getBoolean(KEY_ONBOARDED, false)
         set(value) = sp.edit().putBoolean(KEY_ONBOARDED, value).apply()
+
+    /** Stream the screen into the live conversation without asking again. */
+    var screenStream: Boolean
+        get() = sp.getBoolean(KEY_SCREEN_STREAM, true)
+        set(value) = sp.edit().putBoolean(KEY_SCREEN_STREAM, value).apply()
+
+    /** Identify who is speaking from an enrolled voiceprint. */
+    var voiceIdEnabled: Boolean
+        get() = sp.getBoolean(KEY_VOICE_ID, true)
+        set(value) = sp.edit().putBoolean(KEY_VOICE_ID, value).apply()
+
+    /** Most recent recognised speaker, used to personalise the greeting. */
+    var lastSpeaker: String
+        get() = sp.getString(KEY_LAST_SPEAKER, "") ?: ""
+        set(value) = sp.edit().putString(KEY_LAST_SPEAKER, value).apply()
 
     var flashlightOn: Boolean
         get() = sp.getBoolean(KEY_TORCH, false)
@@ -96,13 +135,18 @@ class ZedPrefs(context: Context) {
     companion object {
         const val NAME = "zed_prefs"
         const val DEFAULT_MODEL = "gemini-2.0-flash-live-001"
+        const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
         private const val KEY_API_KEY = "api_key"
+        private const val KEY_GROQ_KEY = "groq_key"
+        private const val KEY_GROQ_MODEL = "groq_model"
+        private const val KEY_KEYS_CONFIGURED = "keys_configured"
         private const val KEY_MODEL = "model"
         private const val KEY_WAKE_ENABLED = "wake_enabled"
         private const val KEY_WAKE_PHRASE = "wake_phrase"
         private const val KEY_SPEAK_REPLIES = "speak_replies"
         private const val KEY_NAME = "assistant_name"
+        private const val KEY_USER_NAME = "user_name"
         private const val KEY_CUSTOM_INSTRUCTIONS = "custom_instructions"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_BEST_VOICE = "best_voice"
@@ -115,6 +159,9 @@ class ZedPrefs(context: Context) {
         private const val KEY_SENSITIVITY = "sensitivity"
         private const val KEY_ONBOARDED = "onboarded"
         private const val KEY_FLOATING_BUBBLE = "floating_bubble"
+        private const val KEY_SCREEN_STREAM = "screen_stream"
+        private const val KEY_VOICE_ID = "voice_id"
+        private const val KEY_LAST_SPEAKER = "last_speaker"
         private const val KEY_TORCH = "torch"
         private const val KEY_PROJECTION_AT = "projection_at"
     }

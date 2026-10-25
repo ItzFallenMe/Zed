@@ -16,6 +16,7 @@ import androidx.core.content.IntentCompat
 import dev.zed.assistant.MainActivity
 import dev.zed.assistant.R
 import dev.zed.assistant.command.CommandExecutor
+import dev.zed.assistant.command.GroqBrain
 import dev.zed.assistant.command.IntentParser
 import dev.zed.assistant.command.ParsedCommand
 import dev.zed.assistant.command.ZedPrompts
@@ -69,6 +70,7 @@ class ZedCoreService : Service() {
     private var wakeDetector: WakeWordDetector? = null
     private var oneShot: OneShotRecognizer? = null
     private var gemini: GeminiLiveClient? = null
+    private var groq: GroqBrain? = null
     private var mic: MicRecorder? = null
     private var player: PcmPlayer? = null
 
@@ -127,9 +129,9 @@ class ZedCoreService : Service() {
         }
         hardware.batteryPercent()
 
-        if (prefs.floatingBubble) {
+        if (prefs.floatingBubble && ZedPermissions.canDrawOverlays(this)) {
             scope.launch {
-                delay(600)
+                delay(500)
                 showBubble()
             }
         }
@@ -179,6 +181,12 @@ class ZedCoreService : Service() {
         oneShot?.cancel()
         ZedState.partialText.value = ""
         ZedState.setStatus("Listening")
+        // The overlay is the interface: it unfolds the moment Zed is awake, even when the
+        // app itself is not on screen.
+        if (prefs.floatingBubble && ZedPermissions.canDrawOverlays(this)) {
+            if (floating == null) showBubble()
+            floating?.expand()
+        }
         val canLive = prefs.liveVoice && prefs.cloudBrain &&
             prefs.apiKey.isNotBlank() && ZedPermissions.hasMic(this)
         if (canLive) {
@@ -200,7 +208,7 @@ class ZedCoreService : Service() {
             onFinal = { text ->
                 ZedState.partialText.value = ""
                 if (!text.isNullOrBlank()) {
-                    handleCommandText(text)
+                    handleCommandText(text, fromVoice = true)
                 } else {
                     ZedState.setStatus("Standby")
                     resumeWake()
@@ -215,7 +223,7 @@ class ZedCoreService : Service() {
         )
     }
 
-    private fun handleCommandText(text: String) {
+    private fun handleCommandText(text: String, fromVoice: Boolean = false) {
         val cleaned = text.trim()
         if (cleaned.isBlank()) return
         ZedState.addMessage(ZedState.Role.USER, cleaned)
@@ -224,12 +232,7 @@ class ZedCoreService : Service() {
 
         val parsed = IntentParser.parse(cleaned)
         if (parsed.kind == ParsedCommand.Kind.UNKNOWN) {
-            if (prefs.cloudBrain && prefs.apiKey.isNotBlank() && ZedPermissions.hasMic(this)) {
-                pendingPrompt = cleaned
-                startLiveSession()
-            } else {
-                deliver("I could not map that to an action, sir.", speakIt = true)
-            }
+            routeToBrain(cleaned, fromVoice)
             return
         }
 
@@ -248,6 +251,70 @@ class ZedCoreService : Service() {
             }
         }
     }
+
+    /**
+     * Anything the fast on-device parser cannot map becomes a conversation. Spoken input goes
+     * to the realtime session so the reply arrives as a voice; typed input goes to Groq, which
+     * can chain several tool calls before answering.
+     */
+    private fun routeToBrain(text: String, fromVoice: Boolean) {
+        val canLive = prefs.liveVoice && prefs.cloudBrain &&
+            prefs.apiKey.isNotBlank() && ZedPermissions.hasMic(this)
+        val canThink = prefs.cloudBrain && prefs.groqKey.isNotBlank()
+        when {
+            fromVoice && canLive -> {
+                pendingPrompt = text
+                startLiveSession()
+            }
+            canThink -> respondWithGroq(text)
+            canLive -> {
+                pendingPrompt = text
+                startLiveSession()
+            }
+            else -> deliver(
+                "I need a Gemini or Groq key in settings before I can think about that.",
+                speakIt = true
+            )
+        }
+    }
+
+    private fun respondWithGroq(text: String) {
+        val brain = groq ?: GroqBrain(
+            apiKey = prefs.groqKey,
+            model = prefs.groqModel,
+            systemPrompt = buildPrompt(),
+            tools = ZedTools.declarations(),
+            executeTool = { name, args -> executor.runTool(name, args) }
+        ).also { groq = it }
+
+        scope.launch {
+            val history = ZedState.messages.value
+                .dropLast(1)
+                .takeLast(12)
+                .map { it.role.name.lowercase() to it.text }
+            val reply = try {
+                brain.reply(history, text)
+            } catch (t: Throwable) {
+                ZedState.log("GROQ", "Turn failed: ${t.message}")
+                ""
+            }
+            ZedState.thinking.value = false
+            ZedState.setStatus("Standby")
+            if (reply.isBlank()) {
+                deliver("My connection just dropped. Say that again in a second?", speakIt = true)
+            } else {
+                deliver(reply)
+            }
+        }
+    }
+
+    private fun buildPrompt(): String = ZedPrompts.system(
+        assistantName = prefs.assistantName,
+        memories = memory.summary(),
+        customInstructions = prefs.customInstructions,
+        userName = prefs.userName,
+        speaker = prefs.lastSpeaker
+    )
 
     // --------------------------------------------------------- live session
 
@@ -270,11 +337,7 @@ class ZedCoreService : Service() {
         val client = GeminiLiveClient(
             apiKey = prefs.apiKey,
             model = prefs.model,
-            systemPrompt = ZedPrompts.system(
-                assistantName = prefs.assistantName,
-                memories = memory.summary(),
-                customInstructions = prefs.customInstructions
-            ),
+            systemPrompt = buildPrompt(),
             voiceName = prefs.liveVoiceName,
             tools = ZedTools.declarations(),
             listener = liveListener
@@ -449,7 +512,11 @@ class ZedCoreService : Service() {
             return
         }
         if (floating == null) {
-            floating = FloatingAssistant(this) { beginConversation() }
+            floating = FloatingAssistant(
+                context = this,
+                onTap = { beginConversation() },
+                onStop = { stopSpeaking() }
+            )
         }
         floating?.show()
         prefs.floatingBubble = true
@@ -473,6 +540,7 @@ class ZedCoreService : Service() {
     // ------------------------------------------------------------ plumbing
 
     private fun reloadSettings() {
+        groq = null
         speaker.shutdown()
         speaker.init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
         if (prefs.wakeEnabled) setWakeEnabled(true) else setWakeEnabled(false)

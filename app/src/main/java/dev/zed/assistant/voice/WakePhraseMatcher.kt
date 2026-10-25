@@ -1,49 +1,55 @@
 package dev.zed.assistant.voice
 
 /**
- * Pure text matcher for the wake phrase. Kept free of Android imports so it can be
- * unit tested. Recognisers rarely produce the exact spelling of a wake phrase, so we
- * accept common near-misses ("bolo jed", "बोलो ज़ेड") and a bare assistant name.
+ * Pure text matcher for the wake word. Kept free of Android imports so it can be unit
+ * tested. Recognisers rarely produce the exact spelling of a short name, so all the
+ * spellings "zed" is usually transcribed as are accepted, with or without a "hey".
  */
 object WakePhraseMatcher {
 
+    /** Every spelling speech engines return for the name Zed. */
     private val assistantAliases = listOf(
-        "zed", "jed", "zad", "zhed", "jhed", "said zed",
-        "जेड", "ज़ेड", "जेड", "जेड"
+        "zed", "zad", "zade", "zayd", "zhead", "jed", "shed",
+        "जेड", "ज़ेड", "ज़ेड", "जैड"
     )
 
+    /** "hey zed", "ok zed", "अरे ज़ेड" and friends: the name alone is enough. */
     private val triggers = listOf(
-        "bolo", "bolo", "bola", "bole", "hey", "ok", "okay", "arre", "sun", "suno", "oi",
-        "बोलो", "बोल", "अरे", "सुनो", "हे"
+        "hey", "hi", "ok", "okay", "yo", "arre", "arey", "suno", "sun", "oi",
+        "हे", "अरे", "सुनो", "ओए"
     )
-
-    private val extraWakePhrases = listOf("jarvis", "जार्विस", "hey jarvis")
 
     fun matches(transcript: String, phrase: String): Boolean {
         val text = normalize(transcript)
         if (text.isBlank()) return false
 
-        val configured = normalize(phrase).ifBlank { "bolo zed" }
-        if (text.contains(configured)) return true
+        val configured = normalize(phrase).ifBlank { DEFAULT_PHRASE }
+        if (containsWordLike(text, configured)) return true
 
-        if (extraWakePhrases.any { text.contains(normalize(it)) }) return true
+        // The wake word is the assistant's name, so the name alone always wakes Zed.
+        if (assistantAliases.any { containsWordLike(text, normalize(it)) }) return true
 
-        val hasTrigger = triggers.any { text.contains(normalize(it)) }
-        val hasName = assistantAliases.any { alias -> containsWordLike(text, normalize(alias)) }
-        if (hasName) {
-            // "zed" alone is allowed because the recogniser often drops "bolo".
-            return true
+        // Tolerate the recogniser splitting a leading trigger into its own word.
+        return triggers.any { trigger ->
+            text.startsWith(normalize(trigger)) &&
+                assistantAliases.any { text.contains(normalize(it)) }
         }
-        if (hasTrigger && text.contains("zed")) return true
-        return false
     }
 
     private fun containsWordLike(text: String, token: String): Boolean {
         if (token.isBlank()) return false
-        if (text.contains(token)) return true
-        // Allow a single character error on longer names (jed / sed / zad already listed).
+        var index = text.indexOf(token)
+        while (index >= 0) {
+            val before = index == 0 || !text[index - 1].isLetterOrDigit()
+            val afterIndex = index + token.length
+            val after = afterIndex >= text.length || !text[afterIndex].isLetterOrDigit()
+            if (before && after) return true
+            index = text.indexOf(token, index + 1)
+        }
         return false
     }
+
+    const val DEFAULT_PHRASE = "zed"
 
     fun normalize(input: String): String {
         val lowered = input.lowercase()

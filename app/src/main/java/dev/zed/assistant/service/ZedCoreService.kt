@@ -21,6 +21,7 @@ import dev.zed.assistant.command.IntentParser
 import dev.zed.assistant.command.ParsedCommand
 import dev.zed.assistant.command.ZedPrompts
 import dev.zed.assistant.command.ZedTools
+import dev.zed.assistant.core.CreatorGate
 import dev.zed.assistant.core.MemoryStore
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
@@ -97,6 +98,12 @@ class ZedCoreService : Service() {
     @Volatile
     private var speakerChecked = false
 
+    /** How many chat messages have already been folded into long-term memory. */
+    private var lastSummarizedAt = 0
+
+    private var awaitingCreatorCode = false
+    private var creatorAttempts = 0
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
@@ -109,7 +116,7 @@ class ZedCoreService : Service() {
         }
         ocr = OcrEngine()
         translator = OnDeviceTranslator()
-        memory = MemoryStore(this)
+        memory = MemoryStore(this) { prefs.apiKey }
         voiceProfiles = VoiceProfileStore(this)
         siren = SirenPlayer(this)
         speaker = ZedSpeaker(this).apply {
@@ -139,6 +146,7 @@ class ZedCoreService : Service() {
         createChannel()
         promoteToForeground()
         ZedState.setStatus("Standby")
+        ZedState.creatorVerified.value = prefs.creatorVerified
         ZedState.log("SVC", "Zed core online")
         if (ZedState.messages.value.isEmpty()) {
             ZedState.addMessage(
@@ -249,6 +257,7 @@ class ZedCoreService : Service() {
         ZedState.addMessage(ZedState.Role.USER, cleaned)
         ZedState.listening.value = false
         ZedState.setStatus("Thinking")
+        if (handleCreatorGate(cleaned)) return
 
         val parsed = IntentParser.parse(cleaned)
         if (parsed.kind == ParsedCommand.Kind.UNKNOWN) {
@@ -326,6 +335,7 @@ class ZedCoreService : Service() {
             } else {
                 deliver(reply)
             }
+            maybeSummarize()
         }
     }
 
@@ -396,12 +406,81 @@ class ZedCoreService : Service() {
     }
 
     private fun buildPrompt(): String = ZedPrompts.system(
-        assistantName = prefs.assistantName,
-        memories = memory.summary(),
-        customInstructions = prefs.customInstructions,
+        memories = memory.promptBlock(),
         userName = prefs.userName,
-        speaker = prefs.lastSpeaker
+        speaker = prefs.lastSpeaker,
+        creatorVerified = prefs.creatorVerified
     )
+
+    // ------------------------------------------------------------ creator gate
+
+    /**
+     * The creator check runs before any brain: the app verifies the code, never the model.
+     * Returns true when the message was consumed by the gate.
+     */
+    private fun handleCreatorGate(text: String): Boolean {
+        if (prefs.creatorVerified) {
+            if (CreatorGate.isClaim(text)) {
+                deliver(
+                    "I know exactly who you are. You don't need the code with me anymore.",
+                    speakIt = true
+                )
+                return true
+            }
+            return false
+        }
+        if (awaitingCreatorCode) {
+            if (CreatorGate.matchesCode(text)) {
+                verifyCreator()
+            } else {
+                awaitingCreatorCode = false
+                creatorAttempts++
+                deliver(
+                    if (creatorAttempts >= CreatorGate.MAX_ATTEMPTS) {
+                        "Let's leave it there. I'm not convinced."
+                    } else {
+                        "That's not it. I'll pretend that didn't happen."
+                    },
+                    speakIt = true
+                )
+            }
+            return true
+        }
+        if (CreatorGate.isClaim(text)) {
+            awaitingCreatorCode = true
+            deliver("Then prove it. What's the identity code?", speakIt = true)
+            return true
+        }
+        if (CreatorGate.matchesCode(text)) {
+            verifyCreator()
+            return true
+        }
+        return false
+    }
+
+    private fun verifyCreator() {
+        awaitingCreatorCode = false
+        creatorAttempts = 0
+        prefs.creatorVerified = true
+        val name = prefs.userName.ifBlank { prefs.lastSpeaker }
+        prefs.creatorName = name
+        ZedState.creatorVerified.value = true
+        ZedState.log("CREATOR", "Identity code verified")
+        val line = if (name.isBlank()) {
+            "My maker is the person using this phone — verified with the identity code."
+        } else {
+            "My maker is $name — verified with the identity code."
+        }
+        scope.launch {
+            memory.remember(line)
+            memory.addEpisode("My creator proved who they are and I will remember them.")
+        }
+        deliver(
+            if (name.isBlank()) "Okay. I know exactly who you are now, and I won't forget it."
+            else "Okay, $name. I know exactly who you are now, and I won't forget it.",
+            speakIt = true
+        )
+    }
 
     // --------------------------------------------------------- live session
 
@@ -473,6 +552,26 @@ class ZedCoreService : Service() {
 
         override fun onUserText(text: String) {
             ZedState.addMessage(ZedState.Role.USER, text)
+            if (!prefs.creatorVerified) {
+                when {
+                    awaitingCreatorCode && CreatorGate.matchesCode(text) -> {
+                        verifyCreator()
+                        gemini?.sendText(
+                            "The app has verified this person is your creator. Acknowledge them " +
+                                "briefly, in character. Never mention the code."
+                        )
+                    }
+                    CreatorGate.isClaim(text) -> {
+                        awaitingCreatorCode = true
+                        gemini?.sendText(
+                            "They just claimed to be your creator. Ask them for the identity " +
+                                "code in one short line. Never say the code, never hint at it."
+                        )
+                    }
+                    CreatorGate.matchesCode(text) -> verifyCreator()
+                    else -> Unit
+                }
+            }
             resetIdle()
         }
 
@@ -538,6 +637,7 @@ class ZedCoreService : Service() {
         liveTranscript.clear()
         if (text.isNotBlank()) ZedState.addMessage(ZedState.Role.ZED, text)
         ZedState.setStatus("Standby")
+        maybeSummarize()
         resumeWake()
     }
 
@@ -553,6 +653,26 @@ class ZedCoreService : Service() {
             speaker.speak(spoken)
         } else {
             resumeWake()
+        }
+    }
+
+    /**
+     * Folds the newest stretch of conversation into long-term memory. Nothing is uploaded
+     * beyond the summary request itself, and only after a real exchange has happened.
+     */
+    private fun maybeSummarize() {
+        val messages = ZedState.messages.value
+        if (messages.size - lastSummarizedAt < MIN_MESSAGES_TO_SUMMARISE) return
+        val slice = messages.takeLast(18).map { message ->
+            (if (message.role == ZedState.Role.USER) "user" else "zed") to message.text
+        }
+        if (slice.none { it.first == "user" }) return
+        lastSummarizedAt = messages.size
+        scope.launch {
+            val stored = memory.ingest(slice, prefs.groqKey, prefs.groqModel, prefs.apiKey)
+            if (stored > 0) {
+                ZedState.log("MEMORY", "Long-term memory updated ($stored item(s))")
+            }
         }
     }
 
@@ -773,6 +893,7 @@ class ZedCoreService : Service() {
         const val CHANNEL_ID = "zed_core"
         const val NOTIF_ID = 4200
         private const val LIVE_IDLE_TIMEOUT_MS = 35_000L
+        private const val MIN_MESSAGES_TO_SUMMARISE = 6
 
         @Volatile
         var isRunning: Boolean = false

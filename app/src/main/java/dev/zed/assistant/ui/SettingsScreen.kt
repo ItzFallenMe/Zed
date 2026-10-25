@@ -70,7 +70,6 @@ fun SettingsScreen(
     var userName by remember { mutableStateOf(prefs.userName) }
     var model by remember { mutableStateOf(prefs.model) }
     var wakePhrase by remember { mutableStateOf(prefs.wakePhrase) }
-    var customInstructions by remember { mutableStateOf(prefs.customInstructions) }
     var liveConversation by remember { mutableStateOf(prefs.liveVoice) }
     var cloudBrain by remember { mutableStateOf(prefs.cloudBrain) }
     var speakReplies by remember { mutableStateOf(prefs.speakReplies) }
@@ -83,7 +82,11 @@ fun SettingsScreen(
     var voiceId by remember { mutableStateOf(prefs.voiceIdEnabled) }
     val voiceStore = remember { VoiceProfileStore(context) }
     var enrolled by remember { mutableStateOf(voiceStore.names()) }
-    var memoryCount by remember { mutableStateOf(memory.all().size) }
+    var memoryCount by remember { mutableStateOf(memory.facts().size) }
+    var memoryEpisodes by remember { mutableStateOf(memory.episodes().size) }
+    var memoryPreview by remember {
+        mutableStateOf(memory.facts().takeLast(3).map { it.text })
+    }
     var ttsVoice by remember { mutableStateOf(prefs.ttsVoiceName) }
     var liveVoice by remember { mutableStateOf(prefs.liveVoiceName) }
     var showVoicePicker by remember { mutableStateOf(false) }
@@ -91,6 +94,7 @@ fun SettingsScreen(
     var voices by remember { mutableStateOf<List<TtsVoice>>(emptyList()) }
     val logs by ZedState.logs.collectAsState()
     val vision by ZedState.screenVisionActive.collectAsState()
+    val creatorVerified by ZedState.creatorVerified.collectAsState()
 
     LaunchedEffect(showVoicePicker) {
         if (showVoicePicker && voices.isEmpty()) {
@@ -321,29 +325,31 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(18.dp))
-        SectionTitle("Custom instructions")
+        SectionTitle("Identity")
         SectionCard {
-            OutlinedTextField(
-                value = customInstructions,
-                onValueChange = {
-                    customInstructions = it
-                    prefs.customInstructions = it
-                },
-                label = { Text("How should Zed behave?") },
-                placeholder = {
-                    Text("Keep answers to one sentence. Call me Ved. Confirm before sending messages.")
-                },
-                minLines = 3,
-                maxLines = 6,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Added to the system instruction of every live session. Takes effect on the " +
-                    "next conversation.",
+                text = "Zed is Zed",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Warm, quick, a little playful, with opinions and a dry sense of humour. " +
+                    "The personality and the name are built into the app and cannot be edited, " +
+                    "renamed or replaced by a prompt.",
                 style = MaterialTheme.typography.bodySmall,
-                color = ZedMuted
+                color = ZedMuted,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            DividerLine()
+            Text(
+                text = if (creatorVerified) {
+                    "Creator verified. Zed knows who made it and remembers you."
+                } else {
+                    "Creator not verified. Say \"I'm your creator\" and Zed will ask for " +
+                        "the identity code. Verified creators are remembered permanently."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (creatorVerified) ZedWhite else ZedMuted
             )
         }
 
@@ -535,11 +541,24 @@ fun SettingsScreen(
         SectionTitle("Memory")
         SectionCard {
             Text(
-                text = if (memoryCount == 0) "Nothing remembered yet. Say \"remember ...\"."
-                else "$memoryCount remembered fact(s), stored locally.",
+                text = if (memoryCount == 0 && memoryEpisodes == 0) {
+                    "Nothing remembered yet. Say \"remember ...\" or just talk — finished " +
+                        "conversations are summarised into memory."
+                } else {
+                    "$memoryCount fact(s) and $memoryEpisodes remembered conversation(s), " +
+                        "stored locally."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            memoryPreview.forEach { fact ->
+                Text(
+                    text = "· $fact",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ZedMuted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -554,6 +573,8 @@ fun SettingsScreen(
                     onClick = {
                         memory.clear()
                         memoryCount = 0
+                        memoryEpisodes = 0
+                        memoryPreview = emptyList()
                     },
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(

@@ -49,18 +49,10 @@ class ZedPrefs(context: Context) {
         get() = sp.getBoolean(KEY_SPEAK_REPLIES, true)
         set(value) = sp.edit().putBoolean(KEY_SPEAK_REPLIES, value).apply()
 
-    var assistantName: String
-        get() = sp.getString(KEY_NAME, "Zed") ?: "Zed"
-        set(value) = sp.edit().putString(KEY_NAME, value.trim().ifBlank { "Zed" }).apply()
-
     /** What Zed calls the owner. Used for greetings and voice recognition. */
     var userName: String
         get() = sp.getString(KEY_USER_NAME, "") ?: ""
         set(value) = sp.edit().putString(KEY_USER_NAME, value.trim()).apply()
-
-    var customInstructions: String
-        get() = sp.getString(KEY_CUSTOM_INSTRUCTIONS, "") ?: ""
-        set(value) = sp.edit().putString(KEY_CUSTOM_INSTRUCTIONS, value.take(2000)).apply()
 
     var language: String
         get() = sp.getString(KEY_LANGUAGE, "hi-IN") ?: "hi-IN"
@@ -119,6 +111,15 @@ class ZedPrefs(context: Context) {
         get() = sp.getBoolean(KEY_VOICE_ID, true)
         set(value) = sp.edit().putBoolean(KEY_VOICE_ID, value).apply()
 
+    /** Set once the creator's identity code has been verified. Never cleared by accident. */
+    var creatorVerified: Boolean
+        get() = sp.getBoolean(KEY_CREATOR_VERIFIED, false)
+        set(value) = sp.edit().putBoolean(KEY_CREATOR_VERIFIED, value).apply()
+
+    var creatorName: String
+        get() = sp.getString(KEY_CREATOR_NAME, "") ?: ""
+        set(value) = sp.edit().putString(KEY_CREATOR_NAME, value.trim()).apply()
+
     /** Most recent recognised speaker, used to personalise the greeting. */
     var lastSpeaker: String
         get() = sp.getString(KEY_LAST_SPEAKER, "") ?: ""
@@ -145,9 +146,7 @@ class ZedPrefs(context: Context) {
         private const val KEY_WAKE_ENABLED = "wake_enabled"
         private const val KEY_WAKE_PHRASE = "wake_phrase"
         private const val KEY_SPEAK_REPLIES = "speak_replies"
-        private const val KEY_NAME = "assistant_name"
         private const val KEY_USER_NAME = "user_name"
-        private const val KEY_CUSTOM_INSTRUCTIONS = "custom_instructions"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_BEST_VOICE = "best_voice"
         private const val KEY_TTS_VOICE = "tts_voice"
@@ -162,6 +161,8 @@ class ZedPrefs(context: Context) {
         private const val KEY_SCREEN_STREAM = "screen_stream"
         private const val KEY_VOICE_ID = "voice_id"
         private const val KEY_LAST_SPEAKER = "last_speaker"
+        private const val KEY_CREATOR_VERIFIED = "creator_verified"
+        private const val KEY_CREATOR_NAME = "creator_name"
         private const val KEY_TORCH = "torch"
         private const val KEY_PROJECTION_AT = "projection_at"
     }

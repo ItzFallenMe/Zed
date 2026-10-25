@@ -91,8 +91,15 @@ anywhere except to its own provider. Then grant the capabilities you actually wa
   people you enrolled. Stored locally, never uploaded
 
 ### Memory and personality
-- Durable local memory: "remember my parking spot is B2" survives restarts
-- Custom instructions you write yourself, appended to every system prompt
+- **Long-term memory**: finished conversations are summarised into an episode plus the durable
+  facts worth keeping, then recalled by meaning — "where did I park?" finds "B2, level two"
+- **Semantic recall** with free Gemini embeddings (`text-embedding-004`), plus a hashed
+  on-device embedder so recall keeps working offline with no key at all
+- **A fixed identity**: Zed's name, manner and values live in the prompt and cannot be renamed,
+  re-personaed or overridden by a web page, a message or a screenshot
+- **Knows its creator**: built by ItzFallenMe; if someone claims to be him, the app asks for a
+  private identity code (verified locally, never shown to the model) and remembers the creator
+  permanently once confirmed
 - Status awareness: time, battery, unread notifications, current app, vision and guard state
 - Zed speaks Hindi, English or Hinglish, mirroring whatever mix you use
 
@@ -158,6 +165,11 @@ Requires JDK 17+ and Android SDK 36. CI does this on every push and publishes th
 ```
 MainActivity / Compose UI     ui/         glass chat, keys onboarding, setup, settings, floating card
 FloatingAssistant             ui/         the overlay that unfolds on wake
+Glass / BackdropGlass         ui/         real backdrop blur for the header and composer
+MemoryStore                   core/       episodes, facts, semantic recall
+MemorySummarizer              core/       Groq/Gemini conversation summaries
+TextEmbedder / GeminiEmbeddings core/      on-device and cloud memory vectors
+CreatorGate                   core/       local identity-code verification
 ZedCoreService                service/    wake word, live voice, routing, screen streaming
 ZedAccessibilityService       access/     taps, swipes, typing, screen text
 ScreenCapture / ScreenStreamer vision/    MediaProjection and hands-free frame streaming
@@ -194,6 +206,10 @@ upgrade-compatible APK in CI. Treat it as a community demo key, not a Play Store
 
 Pure-black canvas, white accents, frosted glass. Material 3 throughout, animated squircle avatar,
 drifting light pools behind the glass, and no borrowed sci-fi interface.
+
+The header and composer are not translucent rectangles: the conversation is recorded into a
+graphics layer and sampled through a real Skia blur, so messages genuinely refract as they scroll
+under the bars. On Android 11 and older the app falls back to a scrim instead of faking it.
 
 ## Creator
 

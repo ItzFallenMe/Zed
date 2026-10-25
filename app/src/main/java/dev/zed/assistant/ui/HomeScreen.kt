@@ -5,7 +5,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -40,7 +39,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Settings
@@ -63,15 +61,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
@@ -109,6 +114,11 @@ fun HomeScreen(
     var enrollName by remember { mutableStateOf(prefs.userName) }
     val listState = rememberLazyListState()
 
+    // The conversation is painted into this layer so the bars above and below it can
+    // actually refract what is scrolling underneath.
+    val glassLayer = rememberGraphicsLayer()
+    var panelOffset by remember { mutableStateOf(IntOffset.Zero) }
+
     val sendMessage: (String) -> Unit = { raw ->
         val text = raw.trim()
         if (text.isNotBlank()) {
@@ -131,32 +141,68 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+        // ---------------------------------------------------------- conversation
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .imePadding()
+                .drawWithContent {
+                    glassLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(glassLayer)
+                },
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                end = 20.dp,
+                top = 104.dp,
+                bottom = 236.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // ------------------------------------------------------------ header
-            // Frosted bar that only appears once the conversation scrolls under it,
-            // the way a glass sheet picks up the content behind it.
-            val frost by animateFloatAsState(
-                targetValue = if (listState.canScrollBackward) 1f else 0f,
-                animationSpec = tween(320),
-                label = "frost"
-            )
+            if (messages.isEmpty()) {
+                item {
+                    EmptyState(
+                        userName = prefs.userName,
+                        onSuggestion = { text ->
+                            draft = text
+                            keyboard?.show()
+                        }
+                    )
+                }
+            }
+            items(messages, key = { it.timestamp + it.text.hashCode() }) { message ->
+                MessageBubble(message)
+            }
+            if (partial.isNotBlank()) {
+                item {
+                    Text(
+                        text = partial,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ZedWhite.copy(alpha = 0.9f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .border(1.dp, ZedGlassBorder, RoundedCornerShape(18.dp))
+                            .padding(14.dp)
+                    )
+                }
+            }
+            if (thinking) item { TypingIndicator() }
+        }
+
+        // ---------------------------------------------------------------- header
+        BackdropGlass(
+            layer = glassLayer,
+            offset = IntOffset.Zero,
+            shape = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp),
+            blur = 22.dp,
+            tint = 0.62f,
+            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.Black.copy(alpha = 0.92f * frost),
-                                Color.Black.copy(alpha = 0.55f * frost),
-                                Color.Transparent
-                            )
-                        )
-                    )
-                    .padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
+                    .padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -219,177 +265,162 @@ fun HomeScreen(
                     )
                 }
             }
+        }
 
-            // ------------------------------------------------------- transcript
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (messages.isEmpty()) {
-                    item {
-                        EmptyState(
-                            userName = prefs.userName,
-                            onSuggestion = { text ->
-                                draft = text
-                                keyboard?.show()
-                            }
-                        )
-                    }
-                }
-                items(messages, key = { it.timestamp + it.text.hashCode() }) { message ->
-                    MessageBubble(message)
-                }
-                if (partial.isNotBlank()) {
-                    item {
-                        Text(
-                            text = partial,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ZedWhite.copy(alpha = 0.9f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White.copy(alpha = 0.05f))
-                                .padding(14.dp)
-                        )
-                    }
-                }
-                if (thinking) item { TypingIndicator() }
-            }
-
-            // --------------------------------------------------------- quick bar
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 20.dp),
+        // ------------------------------------------------------- bottom glass bar
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .imePadding()
+                .onGloballyPositioned { panelOffset = it.positionInParent().round() }
+        ) {
+            BackdropGlass(
+                layer = glassLayer,
+                offset = panelOffset,
+                shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+                blur = 26.dp,
+                tint = 0.58f,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                item { QuickAction("Torch") { ZedCoreService.sendCommand(context, "torch on") } }
-                item { QuickAction("Battery") { ZedCoreService.sendCommand(context, "battery") } }
-                item {
-                    QuickAction(if (vision) "Screen on" else "See screen") {
-                        if (vision) ZedCoreService.stopProjection(context) else onRequestProjection()
+                Column(modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item { QuickAction("Torch") { ZedCoreService.sendCommand(context, "torch on") } }
+                        item { QuickAction("Battery") { ZedCoreService.sendCommand(context, "battery") } }
+                        item {
+                            QuickAction(if (vision) "Screen on" else "See screen") {
+                                if (vision) ZedCoreService.stopProjection(context)
+                                else onRequestProjection()
+                            }
+                        }
+                        item {
+                            QuickAction(if (armed) "Guard on" else "Guard") {
+                                if (armed) AntiTheftService.disarm(context) else AntiTheftService.arm(context)
+                            }
+                        }
+                        item {
+                            QuickAction(if (enrolling) "Learning…" else "My voice") { showEnroll = true }
+                        }
                     }
-                }
-                item {
-                    QuickAction(if (armed) "Guard on" else "Guard") {
-                        if (armed) AntiTheftService.disarm(context) else AntiTheftService.arm(context)
-                    }
-                }
-                item { QuickAction(if (enrolling) "Learning…" else "My voice") { showEnroll = true } }
-            }
 
-            // ----------------------------------------------------------- composer
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, ZedGlassBorder, RoundedCornerShape(28.dp))
-                    .padding(start = 8.dp, end = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        if (!ZedPermissions.hasMic(context)) onOpenSetup()
-                        else if (speaking) ZedCoreService.stopSpeaking(context)
-                        else ZedCoreService.listen(context)
-                    }
-                ) {
-                    val pulse by rememberInfiniteTransition(label = "mic").animateFloat(
-                        initialValue = 1f,
-                        targetValue = if (listening) 1.12f else 1f,
-                        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-                        label = "pulse"
-                    )
-                    Icon(
-                        imageVector = when {
-                            speaking -> Icons.Rounded.Stop
-                            listening -> Icons.Rounded.GraphicEq
-                            else -> Icons.Rounded.Mic
-                        },
-                        contentDescription = "Talk to Zed",
-                        tint = if (listening || speaking) Color.Black else ZedWhite,
+                    Row(
                         modifier = Modifier
-                            .size(38.dp)
-                            .scale(pulse)
-                            .clip(CircleShape)
-                            .background(if (listening || speaking) ZedWhite else Color.White.copy(alpha = 0.08f))
-                            .padding(9.dp)
-                    )
-                }
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    placeholder = {
-                        Text("Message Zed…", color = Color.White.copy(alpha = 0.35f))
-                    },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage(draft) }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        disabledBorderColor = Color.Transparent,
-                        cursorColor = ZedWhite,
-                        focusedTextColor = ZedWhite,
-                        unfocusedTextColor = ZedWhite,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                val sendEnabled = draft.isNotBlank()
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (sendEnabled) ZedWhite else Color.White.copy(alpha = 0.08f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(Color.White.copy(alpha = 0.07f))
+                            .border(1.dp, ZedGlassBorder, RoundedCornerShape(28.dp))
+                            .padding(start = 8.dp, end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (!ZedPermissions.hasMic(context)) onOpenSetup()
+                                else if (speaking) ZedCoreService.stopSpeaking(context)
+                                else ZedCoreService.listen(context)
+                            }
+                        ) {
+                            val pulse by rememberInfiniteTransition(label = "mic").animateFloat(
+                                initialValue = 1f,
+                                targetValue = if (listening) 1.12f else 1f,
+                                animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                                label = "pulse"
+                            )
+                            Icon(
+                                imageVector = when {
+                                    speaking -> Icons.Rounded.Stop
+                                    listening -> Icons.Rounded.GraphicEq
+                                    else -> Icons.Rounded.Mic
+                                },
+                                contentDescription = "Talk to Zed",
+                                tint = if (listening || speaking) Color.Black else ZedWhite,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .scale(pulse)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (listening || speaking) ZedWhite
+                                        else Color.White.copy(alpha = 0.08f)
+                                    )
+                                    .padding(9.dp)
+                            )
+                        }
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            placeholder = {
+                                Text("Message Zed…", color = Color.White.copy(alpha = 0.35f))
+                            },
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(onSend = { sendMessage(draft) }),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                disabledBorderColor = Color.Transparent,
+                                cursorColor = ZedWhite,
+                                focusedTextColor = ZedWhite,
+                                unfocusedTextColor = ZedWhite,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            ),
+                            modifier = Modifier.weight(1f)
                         )
-                        .clickable(enabled = sendEnabled) { sendMessage(draft) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ArrowUpward,
-                        contentDescription = "Send",
-                        tint = if (sendEnabled) Color.Black else Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.size(20.dp)
+                        val sendEnabled = draft.isNotBlank()
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (sendEnabled) ZedWhite else Color.White.copy(alpha = 0.08f)
+                                )
+                                .clickable(enabled = sendEnabled) { sendMessage(draft) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ArrowUpward,
+                                contentDescription = "Send",
+                                tint = if (sendEnabled) Color.Black
+                                else Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SettingRow(
+                            title = "Hands-free",
+                            subtitle = "Listen for \"${prefs.wakePhrase}\"",
+                            checked = wakeEnabled,
+                            onCheckedChange = { enabled ->
+                                wakeEnabled = enabled
+                                prefs.wakeEnabled = enabled
+                                ZedCoreService.setWake(context, enabled)
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onOpenSetup) {
+                            Text("Access", style = MaterialTheme.typography.labelMedium, color = ZedMuted)
+                        }
+                    }
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.28f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
                     )
                 }
             }
-
-            // Wake word + permissions row.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SettingRow(
-                    title = "Hands-free",
-                    subtitle = "Listen for \"${prefs.wakePhrase}\"",
-                    checked = wakeEnabled,
-                    onCheckedChange = { enabled ->
-                        wakeEnabled = enabled
-                        prefs.wakeEnabled = enabled
-                        ZedCoreService.setWake(context, enabled)
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = onOpenSetup) {
-                    Text("Access", style = MaterialTheme.typography.labelMedium, color = ZedMuted)
-                }
-            }
-            Text(
-                text = status,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.28f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-            )
         }
     }
 
@@ -451,7 +482,7 @@ fun HomeScreen(
 
 @Composable
 private fun EmptyState(userName: String, onSuggestion: (String) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Text(
             text = if (userName.isBlank()) "I'm here." else "Hey $userName.",
             style = MaterialTheme.typography.headlineMedium,
@@ -476,7 +507,8 @@ private fun EmptyState(userName: String, onSuggestion: (String) -> Unit) {
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.04f))
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .border(1.dp, ZedGlassBorder, RoundedCornerShape(16.dp))
                     .clickable { onSuggestion(suggestion) }
                     .padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -593,9 +625,7 @@ private fun MessageBubble(message: ZedState.Message) {
                             bottomEnd = if (isUser) 6.dp else 22.dp
                         )
                     )
-                    .background(
-                        if (isUser) ZedWhite else Color.White.copy(alpha = 0.07f)
-                    )
+                    .background(if (isUser) ZedWhite else Color.White.copy(alpha = 0.08f))
                     .border(
                         1.dp,
                         if (isUser) Color.Transparent else ZedGlassBorder,

@@ -47,12 +47,12 @@ class CommandExecutor(
         ZedState.log("CMD", kind.name + command.target.takeIf { it.isNotBlank() }?.let { " -> $it" }.orEmpty())
         return when (kind) {
             ParsedCommand.Kind.TORCH_ON ->
-                if (hardware.setTorch(true)) "Light on, sir." else "No flashlight available."
+                if (hardware.setTorch(true)) "Light's on." else "No flashlight available."
             ParsedCommand.Kind.TORCH_OFF ->
                 if (hardware.setTorch(false)) "Light off." else "No flashlight available."
             ParsedCommand.Kind.TORCH_TOGGLE -> {
                 val on = hardware.toggleTorch()
-                if (on) "Light on, sir." else "Light off."
+                if (on) "Light's on." else "Light off."
             }
 
             ParsedCommand.Kind.WIFI_ON -> setWifi(true)
@@ -80,7 +80,7 @@ class CommandExecutor(
                 dev.zed.assistant.core.ZedPermissions.openSettingsScreen(
                     context, dev.zed.assistant.core.ZedPermissions.Capability.WRITE_SETTINGS
                 )
-                "Adaptive brightness lives in display settings, sir; I opened the permission page."
+                "Adaptive brightness lives in display settings, so I opened the page for you."
             }
 
             ParsedCommand.Kind.BATTERY -> {
@@ -93,31 +93,31 @@ class CommandExecutor(
 
             ParsedCommand.Kind.REMEMBER -> {
                 if (command.target.isBlank()) {
-                    "What should I remember, sir?"
+                    "What should I remember?"
                 } else if (memory.remember(command.target) != null) {
-                    "Noted, sir. I will remember that."
+                    "Got it. I'll remember that."
                 } else {
                     "That was too short to remember."
                 }
             }
             ParsedCommand.Kind.RECALL -> {
-                val hits = memory.recall(command.target)
+                val hits = memory.recallSemantic(command.target)
                 when {
-                    hits.isEmpty() -> "I have nothing on that, sir."
+                    hits.isEmpty() -> "I've got nothing on that."
                     hits.size == 1 -> hits.first()
                     else -> "Here is what I know: " + hits.take(6).joinToString(". ")
                 }
             }
             ParsedCommand.Kind.FORGET -> {
                 val removed = memory.forget(command.target)
-                if (removed > 0) "Forgotten, sir." else "I had nothing matching that."
+                if (removed > 0) "Forgotten." else "I had nothing matching that."
             }
 
             ParsedCommand.Kind.ALARM_SET -> {
                 if (command.hour < 0) {
                     "What time should I set the alarm for?"
                 } else if (hardware.setAlarm(command.hour, command.minute, "Zed alarm")) {
-                    "Alarm set for ${formatTime(command.hour, command.minute)}, sir."
+                    "Alarm set for ${formatTime(command.hour, command.minute)}."
                 } else {
                     "I could not set that alarm."
                 }
@@ -139,7 +139,7 @@ class CommandExecutor(
                 } else {
                     val label = command.target.ifBlank { "Reminder from Zed" }
                     if (hardware.startTimer(command.number, label)) {
-                        "I will remind you about $label in ${command.number / 60} minute(s), sir."
+                        "I'll remind you about $label in ${command.number / 60} minute(s)."
                     } else {
                         "I could not create that reminder."
                     }
@@ -167,7 +167,7 @@ class CommandExecutor(
 
             ParsedCommand.Kind.CALL_CONTACT -> {
                 if (hardware.callByName(command.target)) {
-                    "Calling ${command.target}, sir."
+                    "Calling ${command.target}."
                 } else {
                     "I could not find ${command.target} in your contacts."
                 }
@@ -187,7 +187,7 @@ class CommandExecutor(
                     "What should I say to ${command.target}?"
                 } else {
                     whatsapp.sendMessage(command.target, command.message) { reply -> speak(reply) }
-                    "Sending to ${command.target}, sir."
+                    "Sending it to ${command.target}."
                 }
             }
             ParsedCommand.Kind.WHATSAPP_VOICE_NOTE -> {
@@ -212,7 +212,7 @@ class CommandExecutor(
             ParsedCommand.Kind.READ_NOTIFICATIONS -> {
                 val summary = ZedNotificationListener.unreadSummary()
                 if (summary.isBlank()) {
-                    "No unread notifications, sir."
+                    "Nothing unread."
                 } else {
                     "Here is what came in: $summary"
                 }
@@ -224,7 +224,7 @@ class CommandExecutor(
                 } else {
                     val source = if (command.target == "hi") "en" else "hi"
                     val translated = translator.translate(text.take(1200), source, command.target)
-                    translated.ifBlank { "Translation failed, sir." }
+                    translated.ifBlank { "That translation didn't work." }
                 }
             }
             ParsedCommand.Kind.SCREENSHOT -> {
@@ -290,7 +290,7 @@ class CommandExecutor(
                 "Previous."
             }
 
-            ParsedCommand.Kind.TIME -> "It is ${hardware.currentTime()}, sir."
+            ParsedCommand.Kind.TIME -> "It's ${hardware.currentTime()}."
             ParsedCommand.Kind.DATE -> "Today is ${hardware.currentDate()}."
 
             ParsedCommand.Kind.SIREN_ON -> {
@@ -433,7 +433,7 @@ class CommandExecutor(
             "toggle_quick_setting" -> {
                 val label = args.optString("name")
                 val ok = toggleTile(label)
-                return if (ok) "Toggled $label." else "Could not toggle $label, sir."
+                return if (ok) "Toggled $label." else "Couldn't toggle $label."
             }
             "guard" -> ParsedCommand(
                 if (args.optBoolean("enabled", true)) ParsedCommand.Kind.ARM_GUARD
@@ -455,13 +455,12 @@ class CommandExecutor(
 
     private suspend fun setWifi(on: Boolean): String {
         val already = isWifiEnabled()
-        if (already == on) return if (on) "Wi-Fi is already on, sir." else "Wi-Fi is already off."
+        if (already == on) return if (on) "Wi-Fi is already on." else "Wi-Fi is already off."
         if (toggleTile("Wi-Fi", "Wifi")) {
             return if (on) "Wi-Fi on." else "Wi-Fi off."
         }
         hardware.openWifiPanel()
-        return if (on) "Wi-Fi panel open; tap the switch, sir."
-        else "Wi-Fi panel open; tap the switch, sir."
+        return "Wi-Fi panel open; tap the switch."
     }
 
     private suspend fun setBluetooth(on: Boolean): String {
@@ -472,7 +471,7 @@ class CommandExecutor(
             return if (on) "Bluetooth on." else "Bluetooth off."
         }
         hardware.openBluetoothSettings()
-        return "Bluetooth settings open, sir."
+        return "Bluetooth settings open."
     }
 
     private suspend fun toggleTile(vararg labels: String): Boolean {
@@ -516,7 +515,7 @@ class CommandExecutor(
     private suspend fun readScreenAloud(): String {
         val text = readScreenText()
         return when {
-            text.isBlank() -> "Screen vision is not running, sir. Start it from the dashboard."
+            text.isBlank() -> "I can't see the screen yet. Turn on screen awareness first."
             else -> text
         }
     }
@@ -532,7 +531,7 @@ class CommandExecutor(
             "up" -> a11y.swipe(wf * 0.5f, hf * 0.75f, wf * 0.5f, hf * 0.25f, 260L)
             else -> a11y.swipe(wf * 0.5f, hf * 0.33f, wf * 0.5f, hf * 0.75f, 260L)
         }
-        return if (swiped) "Swiped $direction." else "That gesture was blocked, sir."
+        return if (swiped) "Swiped $direction." else "That gesture got blocked."
     }
 
     private fun openSettingsPage(page: String): String {
@@ -564,7 +563,7 @@ class CommandExecutor(
             append("It is ${hardware.currentTime()}. Battery $pct percent, $power. ")
             if (unread > 0) append("$unread recent notifications. ")
             if (app.isNotBlank()) append("You are in $app. ")
-            append("$vision, $guard, $wake, sir.")
+            append("$vision, $guard, $wake.")
         }
     }
 
@@ -588,7 +587,7 @@ class CommandExecutor(
             }
         }
         ZedState.log("SCROLL", "Auto scroll started")
-        return "Auto scrolling, sir."
+        return "Auto scrolling."
     }
 
     private fun nav(action: (ZedAccessibilityService) -> Boolean): String? {
@@ -599,14 +598,14 @@ class CommandExecutor(
 
     private fun accessMissing(): String {
         ZedState.log("ACCESS", "Accessibility service not connected")
-        return "I need device control permission for that, sir."
+        return "I need device control permission for that."
     }
 
     private fun needWriteSettings(): String {
         dev.zed.assistant.core.ZedPermissions.openSettingsScreen(
             context, dev.zed.assistant.core.ZedPermissions.Capability.WRITE_SETTINGS
         )
-        return "Allow \"Modify system settings\" so I can change brightness, sir."
+        return "Allow \"Modify system settings\" and I can change the brightness."
     }
 
     private fun formatTime(hour: Int, minute: Int): String {
@@ -621,7 +620,7 @@ class CommandExecutor(
     }
 
     private fun helpText(): String = buildString {
-        append("At your service, sir. I can control the flashlight, Wi-Fi, Bluetooth, ")
+        append("Ready when you are. I can control the flashlight, Wi-Fi, Bluetooth, ")
         append("volume, brightness, alarms, timers and any installed app. ")
         append("I can read the screen aloud, translate it, scroll, tap, type, navigate, ")
         append("play or pause media, and drive WhatsApp: messages, voice notes, search and calls. ")

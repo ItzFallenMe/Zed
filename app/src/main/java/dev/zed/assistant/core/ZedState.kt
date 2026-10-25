@@ -39,6 +39,9 @@ object ZedState {
 
     /** Name of the person recognised from their voiceprint, if any. */
     val speaker = MutableStateFlow("")
+
+    /** True once the creator's identity code has been verified on this install. */
+    val creatorVerified = MutableStateFlow(false)
     val enrolling = MutableStateFlow(false)
 
     fun addMessage(role: Role, text: String) {

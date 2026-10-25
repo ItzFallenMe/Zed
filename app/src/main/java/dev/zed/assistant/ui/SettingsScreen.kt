@@ -59,6 +59,7 @@ fun SettingsScreen(
     var cloudBrain by remember { mutableStateOf(prefs.cloudBrain) }
     var jarvisMode by remember { mutableStateOf(prefs.jarvisMode) }
     var speakReplies by remember { mutableStateOf(prefs.speakReplies) }
+    var bestVoice by remember { mutableStateOf(prefs.bestVoice) }
     var keepHistory by remember { mutableStateOf(prefs.keepHistory) }
     var sensitivity by remember { mutableStateOf(prefs.motionSensitivity.toFloat()) }
     var armed by remember { mutableStateOf(ZedState.antiTheftArmed.value) }
@@ -159,6 +160,19 @@ fun SettingsScreen(
                 speakReplies = it
                 prefs.speakReplies = it
             }
+            ToggleRow("Best available voice", bestVoice) {
+                bestVoice = it
+                prefs.bestVoice = it
+                ZedCoreService.reload(context)
+            }
+            Text(
+                text = "Uses Google speech services and the highest-quality installed voice for " +
+                    "your language, including the natural network voices when online. Falls back " +
+                    "to the best offline voice.",
+                color = ZedMuted,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
             ToggleRow("Keep local chat history", keepHistory) {
                 keepHistory = it
                 prefs.keepHistory = it

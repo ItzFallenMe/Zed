@@ -229,6 +229,34 @@ object ZedTools {
                 listOf("on")
             )
         )
+        tools.put(
+            function(
+                "swipe",
+                "Swipe the screen in a direction, for carousels, stories and app gestures.",
+                JSONObject().put(
+                    "direction",
+                    enumParam("swipe direction", listOf("up", "down", "left", "right"))
+                ),
+                listOf("direction")
+            )
+        )
+        tools.put(
+            function(
+                "open_settings_page",
+                "Open an Android settings page for the user.",
+                JSONObject().put(
+                    "page",
+                    enumParam(
+                        "settings page",
+                        listOf(
+                            "main", "wifi", "bluetooth", "battery", "display", "sound",
+                            "location", "accessibility", "notifications", "apps"
+                        )
+                    )
+                ),
+                listOf("page")
+            )
+        )
         tools.put(function("time_now", "Report the current time and date.", JSONObject(), emptyList()))
         tools.put(
             function(

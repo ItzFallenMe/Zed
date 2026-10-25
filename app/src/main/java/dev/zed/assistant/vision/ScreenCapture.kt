@@ -36,6 +36,9 @@ class ScreenCapture(private val context: Context) {
     @Volatile
     private var frameAt: Long = 0L
 
+    @Volatile
+    private var stopping = false
+
     var captureWidth: Int = 0
         private set
     var captureHeight: Int = 0
@@ -150,6 +153,9 @@ class ScreenCapture(private val context: Context) {
     }
 
     fun stop() {
+        // The projection callback calls back into stop(); guard against recursion.
+        if (stopping) return
+        stopping = true
         runCatching { virtualDisplay?.release() }
         runCatching { imageReader?.close() }
         runCatching { projection?.stop() }
@@ -161,6 +167,7 @@ class ScreenCapture(private val context: Context) {
         latestFrame?.takeIf { !it.isRecycled }?.recycle()
         latestFrame = null
         ZedState.screenVisionActive.value = false
+        stopping = false
     }
 
     private fun ImageReader.acquireLatestImageSafe(): android.media.Image? = try {

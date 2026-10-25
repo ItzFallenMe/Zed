@@ -113,6 +113,16 @@ class IntentParserTest {
     }
 
     @Test
+    fun `swipe and settings pages`() {
+        assertEquals(Kind.SWIPE_LEFT, IntentParser.parse("swipe left").kind)
+        assertEquals(Kind.SWIPE_UP, IntentParser.parse("swipe up").kind)
+        val settings = IntentParser.parse("open wifi settings")
+        assertEquals(Kind.SETTINGS_PAGE, settings.kind)
+        assertEquals("wifi", settings.target)
+        assertEquals("bluetooth", IntentParser.parse("bluetooth settings kholo").target)
+    }
+
+    @Test
     fun `unknown stays unknown`() {
         assertTrue(IntentParser.parse("write me a poem about the moon").kind == Kind.UNKNOWN)
     }

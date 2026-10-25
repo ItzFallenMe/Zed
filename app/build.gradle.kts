@@ -23,9 +23,12 @@ android {
             val ks = file("../keystore/zed-release.jks")
             if (ks.exists()) {
                 storeFile = ks
-                storePassword = System.getenv("ZED_STORE_PASSWORD") ?: "zedassistant"
-                keyAlias = System.getenv("ZED_KEY_ALIAS") ?: "zed"
-                keyPassword = System.getenv("ZED_KEY_PASSWORD") ?: "zedassistant"
+                // CI provides these as secrets; blank secrets must not override the demo key.
+                storePassword = System.getenv("ZED_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+                    ?: "zedassistant"
+                keyAlias = System.getenv("ZED_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "zed"
+                keyPassword = System.getenv("ZED_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+                    ?: "zedassistant"
             }
         }
     }

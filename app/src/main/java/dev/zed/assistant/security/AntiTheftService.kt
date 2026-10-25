@@ -106,15 +106,20 @@ class AntiTheftService : LifecycleService(), SensorEventListener {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppIntent())
-            .addAction(0, "Disarm", serviceIntent(ACTION_DISARM))
+            .addAction(R.drawable.ic_zed_notification, "Disarm", serviceIntent(ACTION_DISARM))
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-            )
+            try {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                )
+            } catch (t: Throwable) {
+                ZedState.log("GUARD", "Camera foreground type refused: ${t.message}")
+                runCatching { startForeground(NOTIF_ID, notification) }
+            }
         } else {
             startForeground(NOTIF_ID, notification)
         }
@@ -252,7 +257,7 @@ class AntiTheftService : LifecycleService(), SensorEventListener {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
-            .addAction(0, "Disarm siren", serviceIntent(ACTION_DISARM))
+            .addAction(R.drawable.ic_zed_notification, "Disarm siren", serviceIntent(ACTION_DISARM))
             .build()
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIF_ID + 1, notification)
@@ -341,7 +346,8 @@ class AntiTheftService : LifecycleService(), SensorEventListener {
 
         fun arm(context: Context) {
             val intent = Intent(context, AntiTheftService::class.java).setAction(ACTION_ARM)
-            ContextCompat.startForegroundService(context, intent)
+            runCatching { ContextCompat.startForegroundService(context, intent) }
+                .onFailure { ZedState.log("GUARD", "Could not arm: ${it.message}") }
         }
 
         fun disarm(context: Context) {

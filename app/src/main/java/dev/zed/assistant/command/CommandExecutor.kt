@@ -2,8 +2,11 @@ package dev.zed.assistant.command
 
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.Intent
 import android.net.wifi.WifiManager
+import android.provider.Settings
 import dev.zed.assistant.access.ZedAccessibilityService
+import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.device.HardwareController
 import dev.zed.assistant.notify.ZedNotificationListener
@@ -199,6 +202,11 @@ class CommandExecutor(
                 val ok = ZedAccessibilityService.instance?.scrollScreen(true) == true
                 if (ok) "Scrolled down." else accessMissing()
             }
+            ParsedCommand.Kind.SWIPE_LEFT -> performSwipe("left")
+            ParsedCommand.Kind.SWIPE_RIGHT -> performSwipe("right")
+            ParsedCommand.Kind.SWIPE_UP -> performSwipe("up")
+            ParsedCommand.Kind.SWIPE_DOWN -> performSwipe("down")
+            ParsedCommand.Kind.SETTINGS_PAGE -> openSettingsPage(command.target)
             ParsedCommand.Kind.TAP_TEXT -> {
                 val a11y = ZedAccessibilityService.instance
                 if (a11y == null) {
@@ -360,6 +368,18 @@ class CommandExecutor(
                 else -> ParsedCommand(ParsedCommand.Kind.MEDIA_TOGGLE)
             }
             "take_screenshot" -> ParsedCommand(ParsedCommand.Kind.SCREENSHOT)
+            "swipe" -> ParsedCommand(
+                when (args.optString("direction", "up")) {
+                    "left" -> ParsedCommand.Kind.SWIPE_LEFT
+                    "right" -> ParsedCommand.Kind.SWIPE_RIGHT
+                    "down" -> ParsedCommand.Kind.SWIPE_DOWN
+                    else -> ParsedCommand.Kind.SWIPE_UP
+                }
+            )
+            "open_settings_page" -> ParsedCommand(
+                ParsedCommand.Kind.SETTINGS_PAGE,
+                target = args.optString("page", "main")
+            )
             "toggle_quick_setting" -> {
                 val label = args.optString("name")
                 val ok = toggleTile(label)
@@ -449,6 +469,37 @@ class CommandExecutor(
             text.isBlank() -> "Screen vision is not running, sir. Start it from the dashboard."
             else -> text
         }
+    }
+
+    private fun performSwipe(direction: String): String {
+        val a11y = ZedAccessibilityService.instance ?: return accessMissing()
+        val (w, h) = a11y.screenSize()
+        val wf = w.toFloat()
+        val hf = h.toFloat()
+        val swiped = when (direction) {
+            "left" -> a11y.swipe(wf * 0.85f, hf * 0.5f, wf * 0.15f, hf * 0.5f, 260L)
+            "right" -> a11y.swipe(wf * 0.15f, hf * 0.5f, wf * 0.85f, hf * 0.5f, 260L)
+            "up" -> a11y.swipe(wf * 0.5f, hf * 0.75f, wf * 0.5f, hf * 0.25f, 260L)
+            else -> a11y.swipe(wf * 0.5f, hf * 0.33f, wf * 0.5f, hf * 0.75f, 260L)
+        }
+        return if (swiped) "Swiped $direction." else "That gesture was blocked, sir."
+    }
+
+    private fun openSettingsPage(page: String): String {
+        val action = when (page) {
+            "wifi" -> Settings.ACTION_WIFI_SETTINGS
+            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+            "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+            "display" -> Settings.ACTION_DISPLAY_SETTINGS
+            "sound" -> Settings.ACTION_SOUND_SETTINGS
+            "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+            "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+            "notifications" -> "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"
+            "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+            else -> Settings.ACTION_SETTINGS
+        }
+        ZedPermissions.launchSafely(context, Intent(action))
+        return "Opening $page settings."
     }
 
     private fun startAutoScroll(): String {

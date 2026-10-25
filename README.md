@@ -28,8 +28,9 @@ GitHub Actions workflow in this repository.
 ## What it can do
 
 ### Device control (accessibility engine)
-- Tap any visible label, swipe, long-press, scroll, type into focused fields
+- Tap any visible label, swipe in any direction, long-press, scroll, type into focused fields
 - Back / home / recent apps / lock screen / power menu / notification shade / quick settings
+- Toggle any quick-settings tile (airplane mode, hotspot, DND, dark theme, mobile data …)
 - Read the full UI tree, then act on it — this is what makes "control the phone" real
 
 ### Hardware controls
@@ -54,8 +55,17 @@ GitHub Actions workflow in this repository.
   accepts "bolo jed", "hey zed", "अरे जेड", "jarvis")
 - **Gemini Live** streaming conversation (PCM in/out over WebSocket) with **function calling**, so
   the model calls real device tools instead of pretending
+- **Best available voice output**: Zed uses Google speech services and picks the highest-quality
+  installed voice for the language — including the natural network voices when online — and falls
+  back to the best offline voice so replies still speak with no connection
 - Local fallback: without an API key, wake word → on-device recognizer → offline parser → TTS
 - Hindi/English/Hinglish, JARVIS-style personality ("sir"), JARVIS HUD interface
+
+### Free only
+
+Zed uses no paid service. Gemini Live runs on the **free tier of the Gemini API** with your own
+key; OCR, wake word, translation, vision and speech synthesis are free on-device Android/ML Kit
+components. Nothing in the app requires a paid subscription or a credit card.
 
 ### WhatsApp automation
 - Send text messages by contact name **or** number (opens chat, types, presses send)

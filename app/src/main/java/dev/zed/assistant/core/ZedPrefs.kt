@@ -43,6 +43,10 @@ class ZedPrefs(context: Context) {
         get() = sp.getBoolean(KEY_JARVIS, true)
         set(value) = sp.edit().putBoolean(KEY_JARVIS, value).apply()
 
+    var bestVoice: Boolean
+        get() = sp.getBoolean(KEY_BEST_VOICE, true)
+        set(value) = sp.edit().putBoolean(KEY_BEST_VOICE, value).apply()
+
     var liveVoice: Boolean
         get() = sp.getBoolean(KEY_LIVE_VOICE, true)
         set(value) = sp.edit().putBoolean(KEY_LIVE_VOICE, value).apply()
@@ -87,6 +91,7 @@ class ZedPrefs(context: Context) {
         private const val KEY_NAME = "assistant_name"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_JARVIS = "jarvis_mode"
+        private const val KEY_BEST_VOICE = "best_voice"
         private const val KEY_LIVE_VOICE = "live_voice"
         private const val KEY_CLOUD_BRAIN = "cloud_brain"
         private const val KEY_KEEP_HISTORY = "keep_history"

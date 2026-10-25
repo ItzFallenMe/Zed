@@ -87,7 +87,7 @@ class ZedCoreService : Service() {
         translator = OnDeviceTranslator()
         siren = SirenPlayer(this)
         speaker = ZedSpeaker(this).apply {
-            init(prefs.language)
+            init(prefs.language, prefs.bestVoice)
             onFinished = { resumeWake() }
         }
         executor = CommandExecutor(
@@ -102,7 +102,11 @@ class ZedCoreService : Service() {
             startSiren = { siren.start() },
             stopSiren = { siren.stop() },
             setGuard = { enabled ->
-                if (enabled) AntiTheftService.arm(this) else AntiTheftService.disarm(this)
+                runCatching {
+                    if (enabled) AntiTheftService.arm(this) else AntiTheftService.disarm(this)
+                }.onFailure {
+                    ZedState.log("GUARD", "Could not switch guard: ${it.message}")
+                }
             }
         )
         createChannel()
@@ -424,7 +428,7 @@ class ZedCoreService : Service() {
 
     private fun reloadSettings() {
         speaker.shutdown()
-        speaker.init(prefs.language)
+        speaker.init(prefs.language, prefs.bestVoice)
         if (prefs.wakeEnabled) setWakeEnabled(true) else setWakeEnabled(false)
         ZedState.log("SVC", "Settings reloaded")
     }
@@ -452,8 +456,8 @@ class ZedCoreService : Service() {
         .setOngoing(true)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setContentIntent(openAppIntent())
-        .addAction(0, "Listen", serviceAction(ACTION_LISTEN))
-        .addAction(0, "Stop", serviceAction(ACTION_STOP))
+        .addAction(R.drawable.ic_zed_notification, "Listen", serviceAction(ACTION_LISTEN))
+        .addAction(R.drawable.ic_zed_notification, "Stop", serviceAction(ACTION_STOP))
         .build()
 
     private fun openAppIntent(): PendingIntent {

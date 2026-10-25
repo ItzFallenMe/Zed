@@ -41,6 +41,23 @@ object IntentParser {
             else ParsedCommand(Kind.ARM_GUARD, raw)
         }
 
+        // --------------------------------------------------- system settings
+        if (text.contains("settings") || text.contains("सेटिंग")) {
+            val page = when {
+                text.contains("wifi") || text.contains("wi-fi") || text.contains("वाईफाई") -> "wifi"
+                text.contains("bluetooth") || text.contains("ब्लूटूथ") -> "bluetooth"
+                text.contains("battery") || text.contains("बैटरी") -> "battery"
+                text.contains("display") || text.contains("brightness") -> "display"
+                text.contains("sound") || text.contains("volume") -> "sound"
+                text.contains("location") || text.contains("gps") -> "location"
+                text.contains("accessibility") -> "accessibility"
+                text.contains("notification") -> "notifications"
+                text.contains("app") -> "apps"
+                else -> "main"
+            }
+            return ParsedCommand(Kind.SETTINGS_PAGE, raw, target = page)
+        }
+
         // ------------------------------------------------------- screenshots
         if (text.contains("screenshot") || text.contains("स्क्रीनशॉट") ||
             text.contains("screen shot")
@@ -155,6 +172,19 @@ object IntentParser {
             text.contains("स्क्रीन पढ़ो")
         ) {
             return ParsedCommand(Kind.READ_SCREEN, raw)
+        }
+
+        // -------------------------------------------------------------- swipe
+        if (text.contains("swipe") || text.contains("स्वाइप")) {
+            return when {
+                text.contains("left") || text.contains("baaye") || text.contains("बाएं") ->
+                    ParsedCommand(Kind.SWIPE_LEFT, raw)
+                text.contains("right") || text.contains("daaye") || text.contains("दाएं") ->
+                    ParsedCommand(Kind.SWIPE_RIGHT, raw)
+                text.contains("up") || text.contains("upar") || text.contains("ऊपर") ->
+                    ParsedCommand(Kind.SWIPE_UP, raw)
+                else -> ParsedCommand(Kind.SWIPE_DOWN, raw)
+            }
         }
 
         // ------------------------------------------------------------- scroll

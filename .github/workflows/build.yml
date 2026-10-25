@@ -70,7 +70,7 @@ jobs:
       - name: Build signed release APK
         env:
           ZED_VERSION_CODE: ${{ github.run_number }}
-          ZED_VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+          ZED_VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.1.0' }}
           ZED_STORE_PASSWORD: ${{ secrets.ZED_STORE_PASSWORD }}
           ZED_KEY_ALIAS: ${{ secrets.ZED_KEY_ALIAS }}
           ZED_KEY_PASSWORD: ${{ secrets.ZED_KEY_PASSWORD }}

@@ -28,6 +28,29 @@ GitHub Actions workflow in this repository.
 - Sideload only — Zed is not on the Play Store
 - Installing it over Play Protect is explained in [INSTALL.md](INSTALL.md)
 
+## What changed in 1.1.0
+
+- **The microphone no longer flickers.** The wake-word loop is now a single-flight state
+  machine: one recogniser reused, one pending restart, a watchdog, backoff and a hard floor
+  between restarts. It also stays silent while Zed is speaking, so Zed can no longer wake
+  itself in a loop.
+- **Crash handling.** The service refuses to run un-promoted instead of being killed by the
+  system, stray background failures are logged instead of taking the process down, duplicate
+  list keys are gone, and the last fatal trace is written to private storage and shown in
+  Settings → Diagnostics on the next start.
+- **Barge-in.** Talking over Zed now stops its current answer and clears the queued audio, the
+  way a real conversation works — and the *Speaking* state ends when the audio actually ends.
+- **A living floating menu.** The overlay orb is now a hand-drawn avatar in the spirit of
+  [bloub](https://github.com/jeremy-prt/bloub) (MIT): it breathes, blinks, watches, and reacts
+  to listening, thinking and speaking. On the wake word it unfolds into a menu with one-tap
+  Torch, Guard, Screen and App actions.
+- **Memory with judgement.** A deterministic memory policy decides what is kept forever:
+  people, preferences, routines, places, plans, decisions. Small talk is dropped and
+  passwords, OTPs, keys and card numbers are refused even when asked. The prompt now carries
+  the real date and time, and a caring, warm register alongside the dry humour.
+- **Safer contact calls.** Two contacts with the same name now produce a question, never a
+  guessed number.
+
 ## First run
 
 Zed asks for two free keys before anything else, because both halves of its brain need one:
@@ -44,8 +67,9 @@ anywhere except to its own provider. Then grant the capabilities you actually wa
 
 - **Say "Zed"** from anywhere. An on-device recogniser listens constantly for the name only;
   that audio never leaves the phone.
-- A **glass card unfolds** over whatever app you are in, showing live captions, and folds away
-  when you are done. There is no app to open and no screen to navigate.
+- A **glass card unfolds** over whatever app you are in — a small living avatar, live captions
+  and four one-tap actions (torch, guard, screen, app) — and folds away when you are done.
+  There is no app to open and no screen to navigate. Drag it anywhere.
 - Talk naturally, or type. Spoken input goes to Gemini Live (streaming audio both ways, with
   tool calls). Typed input goes to Groq, which can chain several phone actions in one go.
 - **One consent** for screen capture, then Zed sees what you see for the rest of the session —
@@ -93,6 +117,9 @@ anywhere except to its own provider. Then grant the capabilities you actually wa
 ### Memory and personality
 - **Long-term memory**: finished conversations are summarised into an episode plus the durable
   facts worth keeping, then recalled by meaning — "where did I park?" finds "B2, level two"
+- **Memory with judgement**: `MemoryPolicy` decides in plain Kotlin what is permanent (people,
+  relationships, preferences, routines, places, plans, decisions) and what is not, so Zed does
+  not slowly fill up with small talk. Credentials never reach memory, in any path
 - **Semantic recall** with free Gemini embeddings (`text-embedding-004`), plus a hashed
   on-device embedder so recall keeps working offline with no key at all
 - **A fixed identity**: Zed's name, manner and values live in the prompt and cannot be renamed,

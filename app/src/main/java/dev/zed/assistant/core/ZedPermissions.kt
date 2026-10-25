@@ -93,6 +93,18 @@ object ZedPermissions {
         }
     }
 
+    fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+
+    fun requestOverlayPermission(context: Context) {
+        launchSafely(
+            context,
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+        )
+    }
+
     fun isNotificationListenerEnabled(context: Context): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
 

@@ -30,6 +30,7 @@ class ZedSpeaker(private val context: Context) {
     private var pendingText: String? = null
     private var targetLanguage = "hi-IN"
     private var preferBestVoice = true
+    private var preferredVoiceName = ""
     private var progressAttached = false
 
     var engineName: String = "system default"
@@ -40,9 +41,15 @@ class ZedSpeaker(private val context: Context) {
 
     var onFinished: (() -> Unit)? = null
 
-    fun init(language: String, preferBest: Boolean = true, onReady: (() -> Unit)? = null) {
+    fun init(
+        language: String,
+        preferBest: Boolean = true,
+        preferredVoice: String = "",
+        onReady: (() -> Unit)? = null
+    ) {
         targetLanguage = language
         preferBestVoice = preferBest
+        preferredVoiceName = preferredVoice
         val existing = tts
         if (existing != null && initialized) {
             applyVoice()
@@ -113,6 +120,16 @@ class ZedSpeaker(private val context: Context) {
             if (targetLanguage.startsWith("hi")) "hi-IN" else "en-IN"
         )
         val allVoices = runCatching { engine.voices?.toList() }.getOrNull().orEmpty()
+        if (preferredVoiceName.isNotBlank()) {
+            val chosen = allVoices.firstOrNull { it.name == preferredVoiceName }
+            if (chosen != null) {
+                runCatching { engine.voice = chosen }
+                voiceName = chosen.name
+                engine.setSpeechRate(1.02f)
+                engine.setPitch(0.96f)
+                return
+            }
+        }
         val sameLanguage = allVoices.filter {
             it.locale.language.equals(locale.language, ignoreCase = true)
         }
@@ -187,7 +204,7 @@ class ZedSpeaker(private val context: Context) {
         val engine = tts
         if (engine == null || !initialized) {
             pendingText = text
-            init(targetLanguage, preferBestVoice)
+            init(targetLanguage, preferBestVoice, preferredVoiceName)
             return
         }
         val mode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD

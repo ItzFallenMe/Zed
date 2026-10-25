@@ -35,17 +35,27 @@ class ZedPrefs(context: Context) {
         get() = sp.getString(KEY_NAME, "Zed") ?: "Zed"
         set(value) = sp.edit().putString(KEY_NAME, value.trim().ifBlank { "Zed" }).apply()
 
+    var customInstructions: String
+        get() = sp.getString(KEY_CUSTOM_INSTRUCTIONS, "") ?: ""
+        set(value) = sp.edit().putString(KEY_CUSTOM_INSTRUCTIONS, value.take(2000)).apply()
+
     var language: String
         get() = sp.getString(KEY_LANGUAGE, "hi-IN") ?: "hi-IN"
         set(value) = sp.edit().putString(KEY_LANGUAGE, value).apply()
 
-    var jarvisMode: Boolean
-        get() = sp.getBoolean(KEY_JARVIS, true)
-        set(value) = sp.edit().putBoolean(KEY_JARVIS, value).apply()
-
     var bestVoice: Boolean
         get() = sp.getBoolean(KEY_BEST_VOICE, true)
         set(value) = sp.edit().putBoolean(KEY_BEST_VOICE, value).apply()
+
+    /** Exact system TTS voice name; blank means "pick the best". */
+    var ttsVoiceName: String
+        get() = sp.getString(KEY_TTS_VOICE, "") ?: ""
+        set(value) = sp.edit().putString(KEY_TTS_VOICE, value.trim()).apply()
+
+    /** Gemini Live prebuilt voice name. */
+    var liveVoiceName: String
+        get() = sp.getString(KEY_LIVE_VOICE_NAME, "Puck") ?: "Puck"
+        set(value) = sp.edit().putString(KEY_LIVE_VOICE_NAME, value.trim().ifBlank { "Puck" }).apply()
 
     var liveVoice: Boolean
         get() = sp.getBoolean(KEY_LIVE_VOICE, true)
@@ -66,6 +76,10 @@ class ZedPrefs(context: Context) {
     var motionSensitivity: Int
         get() = sp.getInt(KEY_SENSITIVITY, 2)
         set(value) = sp.edit().putInt(KEY_SENSITIVITY, value).apply()
+
+    var floatingBubble: Boolean
+        get() = sp.getBoolean(KEY_FLOATING_BUBBLE, false)
+        set(value) = sp.edit().putBoolean(KEY_FLOATING_BUBBLE, value).apply()
 
     var onboardingDone: Boolean
         get() = sp.getBoolean(KEY_ONBOARDED, false)
@@ -89,15 +103,18 @@ class ZedPrefs(context: Context) {
         private const val KEY_WAKE_PHRASE = "wake_phrase"
         private const val KEY_SPEAK_REPLIES = "speak_replies"
         private const val KEY_NAME = "assistant_name"
+        private const val KEY_CUSTOM_INSTRUCTIONS = "custom_instructions"
         private const val KEY_LANGUAGE = "language"
-        private const val KEY_JARVIS = "jarvis_mode"
         private const val KEY_BEST_VOICE = "best_voice"
+        private const val KEY_TTS_VOICE = "tts_voice"
+        private const val KEY_LIVE_VOICE_NAME = "live_voice_name"
         private const val KEY_LIVE_VOICE = "live_voice"
         private const val KEY_CLOUD_BRAIN = "cloud_brain"
         private const val KEY_KEEP_HISTORY = "keep_history"
         private const val KEY_ANTITHEFT = "anti_theft"
         private const val KEY_SENSITIVITY = "sensitivity"
         private const val KEY_ONBOARDED = "onboarded"
+        private const val KEY_FLOATING_BUBBLE = "floating_bubble"
         private const val KEY_TORCH = "torch"
         private const val KEY_PROJECTION_AT = "projection_at"
     }

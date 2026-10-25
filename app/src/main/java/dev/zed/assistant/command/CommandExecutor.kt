@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.provider.Settings
 import dev.zed.assistant.access.ZedAccessibilityService
+import dev.zed.assistant.core.MemoryStore
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.device.HardwareController
@@ -31,6 +32,7 @@ class CommandExecutor(
     private val screen: ScreenCapture,
     private val ocr: OcrEngine,
     private val translator: OnDeviceTranslator,
+    private val memory: MemoryStore,
     private val scope: CoroutineScope,
     private val speak: (String) -> Unit,
     private val startSiren: () -> Unit,
@@ -87,6 +89,30 @@ class CommandExecutor(
                 "Battery at $pct percent$charging."
             }
 
+            ParsedCommand.Kind.STATUS_REPORT -> statusReport()
+
+            ParsedCommand.Kind.REMEMBER -> {
+                if (command.target.isBlank()) {
+                    "What should I remember, sir?"
+                } else if (memory.remember(command.target) != null) {
+                    "Noted, sir. I will remember that."
+                } else {
+                    "That was too short to remember."
+                }
+            }
+            ParsedCommand.Kind.RECALL -> {
+                val hits = memory.recall(command.target)
+                when {
+                    hits.isEmpty() -> "I have nothing on that, sir."
+                    hits.size == 1 -> hits.first()
+                    else -> "Here is what I know: " + hits.take(6).joinToString(". ")
+                }
+            }
+            ParsedCommand.Kind.FORGET -> {
+                val removed = memory.forget(command.target)
+                if (removed > 0) "Forgotten, sir." else "I had nothing matching that."
+            }
+
             ParsedCommand.Kind.ALARM_SET -> {
                 if (command.hour < 0) {
                     "What time should I set the alarm for?"
@@ -105,6 +131,18 @@ class CommandExecutor(
                     "Timer set for ${command.number} seconds."
                 } else {
                     "How long should the timer run?"
+                }
+            }
+            ParsedCommand.Kind.REMINDER -> {
+                if (command.number <= 0) {
+                    "When should I remind you?"
+                } else {
+                    val label = command.target.ifBlank { "Reminder from Zed" }
+                    if (hardware.startTimer(command.number, label)) {
+                        "I will remind you about $label in ${command.number / 60} minute(s), sir."
+                    } else {
+                        "I could not create that reminder."
+                    }
                 }
             }
 
@@ -309,6 +347,18 @@ class CommandExecutor(
                 else -> ParsedCommand(ParsedCommand.Kind.BRIGHTNESS_UP)
             }
             "battery_status" -> ParsedCommand(ParsedCommand.Kind.BATTERY)
+            "status_report" -> ParsedCommand(ParsedCommand.Kind.STATUS_REPORT)
+            "remember" -> ParsedCommand(
+                ParsedCommand.Kind.REMEMBER, target = args.optString("fact")
+            )
+            "recall" -> ParsedCommand(
+                ParsedCommand.Kind.RECALL, target = args.optString("query")
+            )
+            "set_reminder" -> ParsedCommand(
+                ParsedCommand.Kind.REMINDER,
+                target = args.optString("note"),
+                number = args.optInt("minutes", 5) * 60
+            )
             "set_alarm" -> ParsedCommand(
                 ParsedCommand.Kind.ALARM_SET,
                 hour = args.optInt("hour", -1),
@@ -500,6 +550,32 @@ class CommandExecutor(
         }
         ZedPermissions.launchSafely(context, Intent(action))
         return "Opening $page settings."
+    }
+
+    private fun statusReport(): String {
+        val pct = hardware.batteryPercent()
+        val power = if (hardware.isCharging()) "charging" else "on battery"
+        val unread = ZedNotificationListener.recent(limit = 20).size
+        val app = currentAppLabel()
+        val vision = if (screen.isRunning) "screen vision active" else "screen vision off"
+        val guard = if (ZedState.antiTheftArmed.value) "guard armed" else "guard disarmed"
+        val wake = if (ZedState.wakeActive.value) "wake word listening" else "wake word off"
+        return buildString {
+            append("It is ${hardware.currentTime()}. Battery $pct percent, $power. ")
+            if (unread > 0) append("$unread recent notifications. ")
+            if (app.isNotBlank()) append("You are in $app. ")
+            append("$vision, $guard, $wake, sir.")
+        }
+    }
+
+    private fun currentAppLabel(): String {
+        val pkg = ZedAccessibilityService.instance?.currentPackage ?: return ""
+        return try {
+            val pm = context.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        } catch (t: Throwable) {
+            ""
+        }
     }
 
     private fun startAutoScroll(): String {

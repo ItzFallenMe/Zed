@@ -20,12 +20,14 @@ import dev.zed.assistant.command.IntentParser
 import dev.zed.assistant.command.ParsedCommand
 import dev.zed.assistant.command.ZedPrompts
 import dev.zed.assistant.command.ZedTools
+import dev.zed.assistant.core.MemoryStore
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.device.HardwareController
 import dev.zed.assistant.security.AntiTheftService
 import dev.zed.assistant.security.SirenPlayer
+import dev.zed.assistant.ui.FloatingAssistant
 import dev.zed.assistant.vision.OcrEngine
 import dev.zed.assistant.vision.OnDeviceTranslator
 import dev.zed.assistant.vision.ScreenCapture
@@ -59,6 +61,7 @@ class ZedCoreService : Service() {
     private lateinit var screenCapture: ScreenCapture
     private lateinit var ocr: OcrEngine
     private lateinit var translator: OnDeviceTranslator
+    private lateinit var memory: MemoryStore
     private lateinit var speaker: ZedSpeaker
     private lateinit var executor: CommandExecutor
     private lateinit var siren: SirenPlayer
@@ -72,6 +75,7 @@ class ZedCoreService : Service() {
     private val liveTranscript = StringBuilder()
     private var pendingPrompt: String? = null
     private var idleJob: Job? = null
+    private var floating: FloatingAssistant? = null
 
     @Volatile
     private var liveReady = false
@@ -85,9 +89,10 @@ class ZedCoreService : Service() {
         screenCapture = ScreenCapture(this)
         ocr = OcrEngine()
         translator = OnDeviceTranslator()
+        memory = MemoryStore(this)
         siren = SirenPlayer(this)
         speaker = ZedSpeaker(this).apply {
-            init(prefs.language, prefs.bestVoice)
+            init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
             onFinished = { resumeWake() }
         }
         executor = CommandExecutor(
@@ -97,6 +102,7 @@ class ZedCoreService : Service() {
             screen = screenCapture,
             ocr = ocr,
             translator = translator,
+            memory = memory,
             scope = scope,
             speak = { message -> deliver(message) },
             startSiren = { siren.start() },
@@ -113,7 +119,20 @@ class ZedCoreService : Service() {
         promoteToForeground()
         ZedState.setStatus("Standby")
         ZedState.log("SVC", "Zed core online")
+        if (ZedState.messages.value.isEmpty()) {
+            ZedState.addMessage(
+                ZedState.Role.ZED,
+                "Systems online, sir. All subsystems standing by."
+            )
+        }
         hardware.batteryPercent()
+
+        if (prefs.floatingBubble) {
+            scope.launch {
+                delay(600)
+                showBubble()
+            }
+        }
 
         if (prefs.wakeEnabled) {
             scope.launch {
@@ -139,6 +158,8 @@ class ZedCoreService : Service() {
             ACTION_STOP_SPEAK -> stopSpeaking()
             ACTION_RELOAD -> reloadSettings()
             ACTION_STOP -> shutdown()
+            ACTION_SHOW_BUBBLE -> showBubble()
+            ACTION_HIDE_BUBBLE -> hideBubble()
             ACTION_SIREN -> {
                 if (intent.getBooleanExtra(EXTRA_ENABLED, true)) siren.start() else siren.stop()
             }
@@ -249,7 +270,12 @@ class ZedCoreService : Service() {
         val client = GeminiLiveClient(
             apiKey = prefs.apiKey,
             model = prefs.model,
-            systemPrompt = ZedPrompts.system(prefs.assistantName, prefs.jarvisMode),
+            systemPrompt = ZedPrompts.system(
+                assistantName = prefs.assistantName,
+                memories = memory.summary(),
+                customInstructions = prefs.customInstructions
+            ),
+            voiceName = prefs.liveVoiceName,
             tools = ZedTools.declarations(),
             listener = liveListener
         )
@@ -417,6 +443,26 @@ class ZedCoreService : Service() {
 
     // -------------------------------------------------------------- vision
 
+    private fun showBubble() {
+        if (!ZedPermissions.canDrawOverlays(this)) {
+            ZedState.log("BUBBLE", "Overlay permission missing")
+            return
+        }
+        if (floating == null) {
+            floating = FloatingAssistant(this) { beginConversation() }
+        }
+        floating?.show()
+        prefs.floatingBubble = true
+        ZedState.log("BUBBLE", "Floating assistant shown")
+    }
+
+    private fun hideBubble() {
+        floating?.hide()
+        floating = null
+        prefs.floatingBubble = false
+        ZedState.log("BUBBLE", "Floating assistant hidden")
+    }
+
     private fun startProjection(resultCode: Int, data: Intent) {
         promoteToForeground(withProjection = true)
         val started = screenCapture.start(resultCode, data)
@@ -428,7 +474,7 @@ class ZedCoreService : Service() {
 
     private fun reloadSettings() {
         speaker.shutdown()
-        speaker.init(prefs.language, prefs.bestVoice)
+        speaker.init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
         if (prefs.wakeEnabled) setWakeEnabled(true) else setWakeEnabled(false)
         ZedState.log("SVC", "Settings reloaded")
     }
@@ -517,6 +563,8 @@ class ZedCoreService : Service() {
     }
 
     override fun onDestroy() {
+        floating?.hide()
+        floating = null
         closeLive()
         wakeDetector?.stop()
         oneShot?.cancel()
@@ -544,6 +592,8 @@ class ZedCoreService : Service() {
         const val ACTION_RELOAD = "dev.zed.assistant.action.RELOAD"
         const val ACTION_STOP = "dev.zed.assistant.action.STOP"
         const val ACTION_SIREN = "dev.zed.assistant.action.SIREN"
+        const val ACTION_SHOW_BUBBLE = "dev.zed.assistant.action.SHOW_BUBBLE"
+        const val ACTION_HIDE_BUBBLE = "dev.zed.assistant.action.HIDE_BUBBLE"
 
         const val EXTRA_TEXT = "extra_text"
         const val EXTRA_ENABLED = "extra_enabled"
@@ -608,6 +658,12 @@ class ZedCoreService : Service() {
 
         fun reload(context: Context) {
             val intent = Intent(context, ZedCoreService::class.java).setAction(ACTION_RELOAD)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun setBubble(context: Context, enabled: Boolean) {
+            val intent = Intent(context, ZedCoreService::class.java)
+                .setAction(if (enabled) ACTION_SHOW_BUBBLE else ACTION_HIDE_BUBBLE)
             ContextCompat.startForegroundService(context, intent)
         }
 

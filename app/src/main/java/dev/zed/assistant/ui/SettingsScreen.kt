@@ -1,8 +1,11 @@
 package dev.zed.assistant.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,19 +13,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,17 +39,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.zed.assistant.core.MemoryStore
+import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.security.AntiTheftService
 import dev.zed.assistant.service.ZedCoreService
-import dev.zed.assistant.ui.theme.ZedCyan
-import dev.zed.assistant.ui.theme.ZedGold
 import dev.zed.assistant.ui.theme.ZedMuted
+import dev.zed.assistant.voice.TtsVoice
+import dev.zed.assistant.voice.VoiceCatalog
+import dev.zed.assistant.ui.theme.ZedWhite
 
 @Composable
 fun SettingsScreen(
@@ -52,84 +61,193 @@ fun SettingsScreen(
     onRequestProjection: () -> Unit
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val memory = remember { MemoryStore(context) }
+
     var apiKey by remember { mutableStateOf(prefs.apiKey) }
     var model by remember { mutableStateOf(prefs.model) }
     var wakePhrase by remember { mutableStateOf(prefs.wakePhrase) }
-    var liveVoice by remember { mutableStateOf(prefs.liveVoice) }
+    var customInstructions by remember { mutableStateOf(prefs.customInstructions) }
+    var liveConversation by remember { mutableStateOf(prefs.liveVoice) }
     var cloudBrain by remember { mutableStateOf(prefs.cloudBrain) }
-    var jarvisMode by remember { mutableStateOf(prefs.jarvisMode) }
     var speakReplies by remember { mutableStateOf(prefs.speakReplies) }
     var bestVoice by remember { mutableStateOf(prefs.bestVoice) }
     var keepHistory by remember { mutableStateOf(prefs.keepHistory) }
     var sensitivity by remember { mutableStateOf(prefs.motionSensitivity.toFloat()) }
     var armed by remember { mutableStateOf(ZedState.antiTheftArmed.value) }
+    var floatingOn by remember { mutableStateOf(prefs.floatingBubble) }
+    var memoryCount by remember { mutableStateOf(memory.all().size) }
+    var ttsVoice by remember { mutableStateOf(prefs.ttsVoiceName) }
+    var liveVoice by remember { mutableStateOf(prefs.liveVoiceName) }
+    var showVoicePicker by remember { mutableStateOf(false) }
+    var showLiveVoicePicker by remember { mutableStateOf(false) }
+    var voices by remember { mutableStateOf<List<TtsVoice>>(emptyList()) }
     val logs by ZedState.logs.collectAsState()
+    val vision by ZedState.screenVisionActive.collectAsState()
+
+    LaunchedEffect(showVoicePicker) {
+        if (showVoicePicker && voices.isEmpty()) {
+            VoiceCatalog.load(context) { loaded -> voices = loaded }
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Back", color = ZedMuted) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) {
+                Text("Back", style = MaterialTheme.typography.labelLarge, color = ZedMuted)
+            }
             Spacer(modifier = Modifier.weight(1f))
             Text(
-                text = "SYSTEMS",
-                color = ZedCyan,
-                fontSize = 12.sp,
-                letterSpacing = 3.sp,
-                fontWeight = FontWeight.Bold
+                text = "Settings",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onOpenSetup) { Text("Permissions", color = ZedMuted) }
+            TextButton(onClick = onOpenSetup, contentPadding = PaddingValues(0.dp)) {
+                Text("Access", style = MaterialTheme.typography.labelLarge, color = ZedMuted)
+            }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        SectionTitle("Gemini live voice")
-        GlassCard {
+        Spacer(modifier = Modifier.height(10.dp))
+        SectionTitle("Voice model")
+        SectionCard {
             OutlinedTextField(
                 value = apiKey,
                 onValueChange = {
                     apiKey = it
                     prefs.apiKey = it
                 },
-                label = { Text("API key") },
+                label = { Text("Gemini API key") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            TextButton(
+                onClick = { uriHandler.openUri("https://aistudio.google.com/apikey") },
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Get a free key",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZedWhite
+                )
+            }
+            Text(
+                text = "Stored in this app's private storage and used with the free Gemini tier. " +
+                    "Without a key, every offline command still works.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
+            DividerLine()
             OutlinedTextField(
                 value = model,
                 onValueChange = {
                     model = it
                     prefs.model = it
                 },
-                label = { Text("Live model") },
+                label = { Text("Live model id") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "The key is stored only in this app's private storage. Without it, Zed " +
-                    "still runs every offline command through the on-device parser.",
-                color = ZedMuted,
-                fontSize = 11.sp
-            )
-            ToggleRow("Live conversation", liveVoice) {
-                liveVoice = it
+            SettingRow(
+                title = "Live conversation",
+                subtitle = "Streaming audio with function calling",
+                checked = liveConversation
+            ) {
+                liveConversation = it
                 prefs.liveVoice = it
             }
-            ToggleRow("Allow cloud reasoning", cloudBrain) {
+            SettingRow(
+                title = "Cloud reasoning",
+                subtitle = "Off means never connect, fully offline",
+                checked = cloudBrain
+            ) {
                 cloudBrain = it
                 prefs.cloudBrain = it
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        SectionTitle("Wake word & persona")
-        GlassCard {
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Speech output")
+        SectionCard {
+            SettingRow(
+                title = "Best available voice",
+                subtitle = "Google speech services, highest quality voice",
+                checked = bestVoice
+            ) {
+                bestVoice = it
+                prefs.bestVoice = it
+                ZedCoreService.reload(context)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "System voice",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = ttsVoice.ifBlank { "Automatic (best available)" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ZedMuted
+                    )
+                }
+                TextButton(onClick = { showVoicePicker = true }) {
+                    Text("Choose", style = MaterialTheme.typography.labelMedium, color = ZedWhite)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Live voice",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "$liveVoice · Gemini Live",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ZedMuted
+                    )
+                }
+                TextButton(onClick = { showLiveVoicePicker = true }) {
+                    Text("Choose", style = MaterialTheme.typography.labelMedium, color = ZedWhite)
+                }
+            }
+            SettingRow(title = "Speak replies", checked = speakReplies) {
+                speakReplies = it
+                prefs.speakReplies = it
+            }
+            SettingRow(
+                title = "Keep chat history",
+                subtitle = "Stored locally only",
+                checked = keepHistory
+            ) {
+                keepHistory = it
+                prefs.keepHistory = it
+                if (!it) ZedState.clearChat()
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Wake word & language")
+        SectionCard {
             OutlinedTextField(
                 value = wakePhrase,
                 onValueChange = {
@@ -138,96 +256,131 @@ fun SettingsScreen(
                 },
                 label = { Text("Wake phrase") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(10.dp))
-            Text("Language", color = ZedMuted, fontSize = 11.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LanguageChip("हिंदी + English", prefs.language == "hi-IN") {
+                Pill("हिंदी + English", prefs.language == "hi-IN") {
                     prefs.language = "hi-IN"
                     ZedCoreService.reload(context)
                 }
-                LanguageChip("English", prefs.language == "en-IN") {
+                Pill("English", prefs.language == "en-IN") {
                     prefs.language = "en-IN"
                     ZedCoreService.reload(context)
                 }
             }
-            ToggleRow("JARVIS persona", jarvisMode) {
-                jarvisMode = it
-                prefs.jarvisMode = it
-            }
-            ToggleRow("Speak replies", speakReplies) {
-                speakReplies = it
-                prefs.speakReplies = it
-            }
-            ToggleRow("Best available voice", bestVoice) {
-                bestVoice = it
-                prefs.bestVoice = it
-                ZedCoreService.reload(context)
-            }
-            Text(
-                text = "Uses Google speech services and the highest-quality installed voice for " +
-                    "your language, including the natural network voices when online. Falls back " +
-                    "to the best offline voice.",
-                color = ZedMuted,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-            ToggleRow("Keep local chat history", keepHistory) {
-                keepHistory = it
-                prefs.keepHistory = it
-                if (!it) ZedState.clearChat()
-            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        SectionTitle("Screen vision")
-        GlassCard {
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Custom instructions")
+        SectionCard {
+            OutlinedTextField(
+                value = customInstructions,
+                onValueChange = {
+                    customInstructions = it
+                    prefs.customInstructions = it
+                },
+                label = { Text("How should Zed behave?") },
+                placeholder = {
+                    Text("Keep answers to one sentence. Call me Ved. Confirm before sending messages.")
+                },
+                minLines = 3,
+                maxLines = 6,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Screen vision uses Android's screen-capture consent and on-device OCR. " +
-                    "It is only active while you keep it on.",
-                color = ZedMuted,
-                fontSize = 11.sp
+                text = "Added to the system instruction of every live session. Takes effect on the " +
+                    "next conversation.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Screen vision")
+        SectionCard {
+            Text(
+                text = if (vision) "Active. Zed can read, translate and act on this screen."
+                else "Off. Screen capture needs your consent each time it starts.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onRequestProjection,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = ZedCyan,
-                        contentColor = Color(0xFF04121A)
+                        containerColor = ZedWhite,
+                        contentColor = Color.Black
                     )
-                ) { Text("Start vision", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                ) { Text("Start vision", style = MaterialTheme.typography.labelMedium) }
                 Button(
                     onClick = { ZedCoreService.stopProjection(context) },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = Color.White.copy(alpha = 0.1f),
+                        contentColor = ZedWhite
                     )
-                ) { Text("Stop", fontSize = 12.sp) }
+                ) { Text("Stop", style = MaterialTheme.typography.labelMedium) }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Floating assistant")
+        SectionCard {
+            SettingRow(
+                title = "Floating bubble",
+                subtitle = "A tap-to-talk orb that floats above other apps",
+                checked = floatingOn
+            ) { value ->
+                floatingOn = value
+                prefs.floatingBubble = value
+                if (value && !ZedPermissions.canDrawOverlays(context)) {
+                    ZedPermissions.requestOverlayPermission(context)
+                } else {
+                    ZedCoreService.setBubble(context, value)
+                }
+            }
+            Text(
+                text = "Needs the \"display over other apps\" permission. The bubble shows live " +
+                    "captions while Zed listens and speaks, and can be dragged anywhere.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
         SectionTitle("Anti-theft guard")
-        GlassCard {
-            ToggleRow("Guard armed", armed) { value ->
+        SectionCard {
+            SettingRow(
+                title = "Guard armed",
+                subtitle = "Motion and charger detection with a loud siren",
+                checked = armed
+            ) { value ->
                 armed = value
                 prefs.antiTheftArmed = value
                 if (value) AntiTheftService.arm(context) else AntiTheftService.disarm(context)
             }
             Text(
                 text = "Motion sensitivity",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Slider(
                 value = sensitivity,
                 onValueChange = { sensitivity = it },
                 onValueChangeFinished = { prefs.motionSensitivity = sensitivity.toInt() },
                 valueRange = 1f..3f,
-                steps = 1
+                steps = 1,
+                colors = SliderDefaults.colors(
+                    thumbColor = ZedWhite,
+                    activeTrackColor = ZedWhite,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.16f)
+                )
             )
             Text(
                 text = when (sensitivity.toInt()) {
@@ -235,123 +388,232 @@ fun SettingsScreen(
                     3 -> "High: sensitive to any nudge"
                     else -> "Balanced"
                 },
-                color = ZedMuted,
-                fontSize = 11.sp
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
             )
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = { AntiTheftService.requestTest(context) },
-                shape = RoundedCornerShape(14.dp),
+                shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = Color.White.copy(alpha = 0.1f),
+                    contentColor = ZedWhite
                 )
-            ) { Text("Test siren", fontSize = 12.sp) }
+            ) { Text("Test siren", style = MaterialTheme.typography.labelMedium) }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Memory")
+        SectionCard {
+            Text(
+                text = if (memoryCount == 0) "Nothing remembered yet. Say \"remember ...\"."
+                else "$memoryCount remembered fact(s), stored locally.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { ZedCoreService.sendCommand(context, "what do you remember") },
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.1f),
+                        contentColor = ZedWhite
+                    )
+                ) { Text("Recall", style = MaterialTheme.typography.labelMedium) }
+                Button(
+                    onClick = {
+                        memory.clear()
+                        memoryCount = 0
+                    },
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.1f),
+                        contentColor = ZedWhite
+                    )
+                ) { Text("Clear memory", style = MaterialTheme.typography.labelMedium) }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
         SectionTitle("Diagnostics")
-        GlassCard {
+        SectionCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Service",
+                    text = "Assistant service",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 13.sp,
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = { ZedCoreService.start(context) }) {
-                    Text("Start", color = ZedCyan, fontSize = 12.sp)
+                    Text("Start", style = MaterialTheme.typography.labelMedium, color = ZedWhite)
                 }
                 TextButton(onClick = { ZedCoreService.stop(context) }) {
-                    Text("Stop", color = ZedGold, fontSize = 12.sp)
+                    Text("Stop", style = MaterialTheme.typography.labelMedium, color = ZedMuted)
                 }
             }
-            Button(
-                onClick = {
-                    ZedCoreService.sendCommand(
-                        context,
-                        "read notifications"
-                    )
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+            TextButton(
+                onClick = { ZedCoreService.sendCommand(context, "read notifications") },
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Read notifications aloud",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ZedWhite
                 )
-            ) { Text("Speak notifications", fontSize = 12.sp) }
-            Spacer(modifier = Modifier.height(10.dp))
-            Column(
+            }
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 180.dp)
-                    .background(
-                        MaterialTheme.colorScheme.background,
-                        RoundedCornerShape(12.dp)
-                    )
+                    .heightIn(max = 170.dp)
+                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(16.dp))
                     .verticalScroll(rememberScrollState())
-                    .padding(10.dp)
+                    .padding(12.dp)
             ) {
-                if (logs.isEmpty()) {
-                    Text("No events yet.", color = ZedMuted, fontSize = 11.sp)
-                }
-                logs.takeLast(40).reversed().forEach { line ->
-                    Text(
-                        text = "[${line.tag}] ${line.text}",
-                        color = ZedMuted,
-                        fontSize = 10.sp
-                    )
+                Column {
+                    if (logs.isEmpty()) {
+                        Text(
+                            text = "No events yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ZedMuted
+                        )
+                    }
+                    logs.takeLast(40).reversed().forEach { line ->
+                        Text(
+                            text = "${line.tag} · ${line.text}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ZedMuted
+                        )
+                    }
                 }
             }
             TextButton(onClick = { ZedState.clearLogs() }) {
-                Text("Clear log", color = ZedMuted, fontSize = 11.sp)
+                Text("Clear log", style = MaterialTheme.typography.labelMedium, color = ZedMuted)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "Zed · open source · all recognition and OCR runs on device. " +
-                "Gemini Live sends audio to Google only while a conversation is open.",
-            color = ZedMuted,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(bottom = 24.dp)
+            text = "Zed · MIT licensed · wake word, OCR and translation run on device. " +
+                "Gemini audio is only streamed while a conversation is open.",
+            style = MaterialTheme.typography.bodySmall,
+            color = ZedMuted
+        )
+        TextButton(
+            onClick = { uriHandler.openUri("https://github.com/ItzFallenMe") },
+            contentPadding = PaddingValues(vertical = 4.dp)
+        ) {
+            Text(
+                text = "Created by ItzFallenMe",
+                style = MaterialTheme.typography.labelMedium,
+                color = ZedWhite
+            )
+        }
+        Spacer(modifier = Modifier.height(28.dp))
+    }
+
+    if (showVoicePicker) {
+        AlertDialog(
+            onDismissRequest = { showVoicePicker = false },
+            confirmButton = {
+                TextButton(onClick = { showVoicePicker = false }) { Text("Close") }
+            },
+            title = { Text("System voice") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    item {
+                        VoiceOption(
+                            title = "Automatic",
+                            subtitle = "Highest quality for the language",
+                            selected = ttsVoice.isBlank()
+                        ) {
+                            ttsVoice = ""
+                            prefs.ttsVoiceName = ""
+                            ZedCoreService.reload(context)
+                            showVoicePicker = false
+                        }
+                    }
+                    items(voices) { voice ->
+                        VoiceOption(
+                            title = voice.name,
+                            subtitle = buildString {
+                                append(voice.locale)
+                                append(" · ")
+                                append(voice.qualityLabel())
+                                if (voice.network) append(" · network")
+                            },
+                            selected = ttsVoice == voice.name
+                        ) {
+                            ttsVoice = voice.name
+                            prefs.ttsVoiceName = voice.name
+                            ZedCoreService.reload(context)
+                            showVoicePicker = false
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showLiveVoicePicker) {
+        AlertDialog(
+            onDismissRequest = { showLiveVoicePicker = false },
+            confirmButton = {
+                TextButton(onClick = { showLiveVoicePicker = false }) { Text("Close") }
+            },
+            title = { Text("Live voice") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    items(LIVE_VOICES) { name ->
+                        VoiceOption(
+                            title = name,
+                            subtitle = "Gemini Live prebuilt voice",
+                            selected = liveVoice == name
+                        ) {
+                            liveVoice = name
+                            prefs.liveVoiceName = name
+                            ZedCoreService.reload(context)
+                            showLiveVoicePicker = false
+                        }
+                    }
+                }
+            }
         )
     }
 }
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun VoiceOption(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f)
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = ZedCyan,
-                checkedTrackColor = ZedCyan.copy(alpha = 0.3f)
+        RadioButton(selected = selected, onClick = onClick)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
-        )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
+        }
     }
 }
 
-@Composable
-private fun LanguageChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) ZedCyan.copy(alpha = 0.2f)
-            else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (selected) ZedCyan else MaterialTheme.colorScheme.onSurface
-        )
-    ) {
-        Text(label, fontSize = 11.sp)
-    }
-}
+private val LIVE_VOICES = listOf(
+    "Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"
+)
+
+private val CircleShape = RoundedCornerShape(50)

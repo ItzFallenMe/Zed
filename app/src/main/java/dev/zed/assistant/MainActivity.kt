@@ -59,6 +59,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         maybeStartCore()
+        if (prefs.floatingBubble && ZedCoreService.isRunning &&
+            ZedPermissions.canDrawOverlays(this)
+        ) {
+            runCatching { ZedCoreService.setBubble(this, true) }
+        }
     }
 
     private fun maybeStartCore() {

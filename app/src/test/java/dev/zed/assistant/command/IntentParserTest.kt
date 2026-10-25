@@ -113,6 +113,22 @@ class IntentParserTest {
     }
 
     @Test
+    fun `memory, status and reminders`() {
+        val remember = IntentParser.parse("remember my locker code is 4412")
+        assertEquals(Kind.REMEMBER, remember.kind)
+        assertEquals("my locker code is 4412", remember.target)
+
+        assertEquals(Kind.RECALL, IntentParser.parse("what do you remember").kind)
+        assertEquals(Kind.FORGET, IntentParser.parse("forget locker code").kind)
+        assertEquals(Kind.STATUS_REPORT, IntentParser.parse("status report").kind)
+
+        val reminder = IntentParser.parse("remind me in 10 minutes to call mom")
+        assertEquals(Kind.REMINDER, reminder.kind)
+        assertEquals(600, reminder.number)
+        assertEquals("call mom", reminder.target)
+    }
+
+    @Test
     fun `swipe and settings pages`() {
         assertEquals(Kind.SWIPE_LEFT, IntentParser.parse("swipe left").kind)
         assertEquals(Kind.SWIPE_UP, IntentParser.parse("swipe up").kind)

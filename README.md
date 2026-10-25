@@ -1,8 +1,10 @@
-# Zed — JARVIS for your Android phone
+# Zed — an advanced voice assistant that runs your whole phone
 
 Zed is an open-source, voice-first assistant that actually **operates** your phone: it taps,
 swipes, types, reads the screen, flips hardware switches, drives WhatsApp and guards the device
 when it is left alone. Say **"Bolo Zed"** and talk in Hindi, English or Hinglish.
+
+Built by [ItzFallenMe](https://github.com/ItzFallenMe).
 
 The assistant is built as a native Kotlin/Compose app because almost everything it does lives in
 Android services: an accessibility engine, a foreground voice service, MediaProjection OCR and a
@@ -58,8 +60,25 @@ GitHub Actions workflow in this repository.
 - **Best available voice output**: Zed uses Google speech services and picks the highest-quality
   installed voice for the language — including the natural network voices when online — and falls
   back to the best offline voice so replies still speak with no connection
+- **Choose the voice**: pick any installed system voice, or one of the Gemini Live voices
+- **Floating bubble**: a translucent tap-to-talk orb that floats above every app with live
+  captions, so Zed is one tap away without leaving what you are doing
 - Local fallback: without an API key, wake word → on-device recognizer → offline parser → TTS
-- Hindi/English/Hinglish, JARVIS-style personality ("sir"), JARVIS HUD interface
+- Hindi/English/Hinglish with a composed, dry-witted personality and a pure-black
+  glassmorphism interface
+
+### Floating assistant
+- A translucent orb floats above every app: tap to talk, drag it anywhere
+- Live captions expand beside it while Zed listens and speaks
+- Uses Android's "display over other apps" permission, off by default
+
+### Memory & custom instructions
+- **Local memory**: "remember my parking spot is B2" survives restarts; ask "what do you
+  remember" and Zed recalls it. Nothing is uploaded, and settings can wipe it
+- **Custom instructions**: write your own rules in settings (tone, habits, "confirm before
+  sending") and they are appended to the system instruction of every conversation
+- **Status awareness**: "status report" gives time, battery, unread notifications, the app you
+  are in, vision state and guard state in one answer
 
 ### Free only
 
@@ -107,9 +126,11 @@ No app can do these silently any more, and Zed tells you so instead of failing q
    - **Camera** — intruder snapshots
    - **Contacts / Phone** — "call mom"
    - **Device admin** — lock the screen during an intruder alert
-3. Optional: add a Gemini API key in Settings for live conversation. Get one from
-   [Google AI Studio](https://aistudio.google.com/apikey).
-4. Toggle **Wake word** on and say **"Bolo Zed"**.
+   - **Display over other apps** — only if you want the floating bubble
+3. Optional: add a Gemini API key in Settings for live conversation. The **Get a free key** button
+   opens [Google AI Studio](https://aistudio.google.com/apikey); the free tier is enough.
+4. Toggle **Wake word** on and say **"Bolo Zed"**, or tap the orb / floating bubble.
+5. In **Settings → System voice / Live voice** you can pick exactly which voice Zed uses.
 
 The Android 13+ quirk worth knowing: after a reboot, open Zed once. Android does not allow a
 microphone foreground service to start itself from the background, so the wake word re-arms on
@@ -128,7 +149,7 @@ Requires JDK 17+ and Android SDK 36. CI does this automatically on every push.
 ## Architecture
 
 ```
-MainActivity / Compose UI        ui/            HUD dashboard, setup, settings
+MainActivity / Compose UI        ui/            glass dashboard, setup, settings, floating orb
 ZedCoreService                   service/       wake word, live voice, command routing
 ZedAccessibilityService          access/        taps, swipes, typing, screen text
 ScreenCapture + OcrEngine        vision/        MediaProjection, ML Kit OCR, translation
@@ -137,6 +158,7 @@ IntentParser / CommandExecutor   command/       offline intents and tool executi
 WhatsAppController               whatsapp/      chat automation
 AntiTheftService + SirenPlayer   security/      motion guard, siren, snapshots
 ZedNotificationListener          notify/        unread message reading
+MemoryStore                      core/          local long-term facts
 ```
 
 Commands flow: **wake word → speech → (offline parser | Gemini tool call) → CommandExecutor →
@@ -157,6 +179,16 @@ See [PRIVACY.md](PRIVACY.md) for the detail.
 `keystore/zed-release.jks` is committed **on purpose** so anyone can reproduce a byte-identical,
 upgrade-compatible APK in CI. Treat it as a community demo key: it is not suitable for Play Store
 distribution. Rotate it (and set `ZED_STORE_PASSWORD` / `ZED_KEY_PASSWORD` secrets) if you fork.
+
+## Design
+
+Pure-black canvas, white accents and frosted glass panels — no sci-fi HUD, no borrowed
+interface. Material 3 components throughout, with an animated waveform as the only signature
+element.
+
+## Creator
+
+Built by **ItzFallenMe** — [github.com/ItzFallenMe](https://github.com/ItzFallenMe).
 
 ## Contributing
 

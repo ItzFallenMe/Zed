@@ -1,7 +1,5 @@
 package dev.zed.assistant.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,11 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,14 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.zed.assistant.core.ZedPermissions
-import dev.zed.assistant.ui.theme.ZedCyan
-import dev.zed.assistant.ui.theme.ZedMuted
 import kotlinx.coroutines.delay
 
 @Composable
@@ -52,100 +44,97 @@ fun SetupScreen(
     }
 
     val statuses = remember(tick) {
-        ZedPermissions.Capability.entries.associateWith { ZedPermissions.isGranted(context, it) }
+        ZedPermissions.Capability.entries.associateWith {
+            ZedPermissions.isGranted(context, it)
+        }
     }
     val coreReady = statuses[ZedPermissions.Capability.MICROPHONE] == true &&
         statuses[ZedPermissions.Capability.ACCESSIBILITY] == true
+    val grantedCount = statuses.count { it.value }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        Text(
-            text = "INITIALISE",
-            color = ZedCyan,
-            fontSize = 12.sp,
-            letterSpacing = 3.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "Grant the systems Zed needs to control this phone.",
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "Everything you allow stays on this device. No audio is streamed in the " +
-                "background; the wake word is recognised locally.",
-            color = ZedMuted,
-            fontSize = 12.sp
-        )
-        Spacer(modifier = Modifier.height(18.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Set up Zed",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "$grantedCount of ${statuses.size} capabilities ready",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            StatusChip(label = if (coreReady) "Core ready" else "Needs access", active = coreReady)
+        }
 
-        ZedPermissions.Capability.entries.forEach { capability ->
-            val granted = statuses[capability] == true
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface,
-                        RoundedCornerShape(18.dp)
-                    )
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Zed works through Android's own permission system. Grant only what you want to " +
+                "use; every capability is independent and can be revoked later.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SectionCard {
+            ZedPermissions.Capability.entries.forEachIndexed { index, capability ->
                 CapabilityRow(
                     title = capability.title,
                     description = capability.why,
-                    granted = granted,
+                    granted = statuses[capability] == true,
                     onGrant = {
                         when (capability) {
                             ZedPermissions.Capability.DEVICE_ADMIN -> onDeviceAdmin()
-                            ZedPermissions.Capability.ACCESSIBILITY ->
-                                ZedPermissions.openSettingsScreen(context, capability)
-                            ZedPermissions.Capability.NOTIFICATION_ACCESS ->
-                                ZedPermissions.openSettingsScreen(context, capability)
+                            ZedPermissions.Capability.ACCESSIBILITY,
+                            ZedPermissions.Capability.NOTIFICATION_ACCESS,
                             ZedPermissions.Capability.WRITE_SETTINGS ->
                                 ZedPermissions.openSettingsScreen(context, capability)
                             else -> onCapabilityClick(capability)
                         }
                     }
                 )
+                if (index != ZedPermissions.Capability.entries.lastIndex) DividerLine()
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
+        Spacer(modifier = Modifier.height(18.dp))
         Button(
             onClick = onDone,
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (coreReady) ZedCyan else MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (coreReady) Color(0xFF04121A) else MaterialTheme.colorScheme.onSurface
-            )
+            shape = MaterialTheme.shapes.medium
         ) {
             Text(
-                text = if (coreReady) "BRING ZED ONLINE" else "CONTINUE ANYWAY",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                letterSpacing = 1.sp,
+                text = if (coreReady) "Start using Zed" else "Continue anyway",
+                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(vertical = 6.dp)
             )
         }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
+        TextButton(
+            onClick = onDone,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            TextButton(onClick = onDone) {
-                Text("Skip for now", color = ZedMuted, fontSize = 12.sp)
-            }
+            Text("Skip for now", style = MaterialTheme.typography.labelMedium)
         }
-        Spacer(modifier = Modifier.height(20.dp))
+        OutlinedButton(
+            onClick = { ZedPermissions.openSettingsScreen(context, ZedPermissions.Capability.ACCESSIBILITY) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Text(
+                text = "Open accessibility settings",
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }

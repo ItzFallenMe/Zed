@@ -20,6 +20,54 @@ object IntentParser {
             return ParsedCommand(Kind.HELP, raw)
         }
 
+        // -------------------------------------------------- long-term memory
+        if (text.startsWith("remember ") || text.contains("yaad rakho") ||
+            text.contains("याद रखो") || text.contains("note kar")
+        ) {
+            val fact = extractAfter(
+                text,
+                listOf(
+                    "remember that ", "remember ", "yaad rakho ki ", "yaad rakho ",
+                    "याद रखो कि ", "याद रखो ", "note karo ", "note kar ", "note "
+                )
+            )?.trim()
+            if (!fact.isNullOrBlank()) return ParsedCommand(Kind.REMEMBER, raw, target = fact)
+        }
+        if (text.contains("what do you remember") || text.contains("kya yaad hai") ||
+            text.contains("क्या याद है") || text.contains("recall") ||
+            text.contains("memory batao")
+        ) {
+            val query = extractAfter(text, listOf("recall ", "memory batao "))?.trim().orEmpty()
+            return ParsedCommand(Kind.RECALL, raw, target = query)
+        }
+        if (text.contains("forget ") || text.contains("bhool jao")) {
+            val query = extractAfter(
+                text, listOf("forget about ", "forget ", "bhool jao ")
+            )?.trim().orEmpty()
+            if (query.isNotBlank()) return ParsedCommand(Kind.FORGET, raw, target = query)
+        }
+
+        // ------------------------------------------------ status awareness
+        if (text.contains("status report") || text.contains("system status") ||
+            text.contains("full status") || text.contains("status batao") ||
+            text.contains("status bata do") || text.contains("स्टेटस")
+        ) {
+            return ParsedCommand(Kind.STATUS_REPORT, raw)
+        }
+
+        // ---------------------------------------------------------- reminders
+        if (text.contains("remind me") || text.contains("yaad dila")) {
+            val minutes = Regex("(\\d+)\\s*(?:minute|minutes|min|मिनट)")
+                .find(text)?.groupValues?.get(1)?.toIntOrNull()
+            val seconds = minutes?.times(60)
+                ?: Regex("(\\d+)\\s*(?:second|seconds|sec|सेकंड)")
+                    .find(text)?.groupValues?.get(1)?.toIntOrNull()
+            val note = extractAfter(text, listOf(" to ", " ki ", " कि "))?.trim().orEmpty()
+            if (seconds != null) {
+                return ParsedCommand(Kind.REMINDER, raw, target = note, number = seconds)
+            }
+        }
+
         // ------------------------------------------------------ WhatsApp first
         parseWhatsApp(text, raw)?.let { return it }
 

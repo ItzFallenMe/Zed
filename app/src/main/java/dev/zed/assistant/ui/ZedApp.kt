@@ -1,18 +1,25 @@
 package dev.zed.assistant.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
-import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.ui.theme.ZedBackground
 import dev.zed.assistant.ui.theme.ZedTheme
 
@@ -30,12 +37,25 @@ fun ZedApp(
     }
 
     ZedTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = ZedBackground,
-            contentColor = MaterialTheme.colorScheme.onBackground
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ZedBackground)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            // Glass needs something behind it: soft monochrome light pools on black.
+            LightPool(modifier = Modifier.offset(x = (-90).dp, y = (-40).dp), size = 340, alpha = 0.16f)
+            LightPool(
+                modifier = Modifier.offset(x = 180.dp, y = 380.dp),
+                size = 400,
+                alpha = 0.10f
+            )
+            LightPool(
+                modifier = Modifier.offset(x = (-60).dp, y = 620.dp),
+                size = 300,
+                alpha = 0.07f
+            )
+
+            Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 when (screen) {
                     Screen.SETUP -> SetupScreen(
                         onCapabilityClick = onRequestCapability,
@@ -62,3 +82,21 @@ fun ZedApp(
         }
     }
 }
+
+@Composable
+private fun LightPool(modifier: Modifier, size: Int, alpha: Float) {
+    Box(
+        modifier = modifier
+            .size(size.dp)
+            .blur(90.dp)
+            .background(
+                brush = Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = alpha), Color.Transparent)
+                ),
+                shape = CircleShape
+            )
+    )
+}
+
+@Suppress("unused")
+private val themeReference = MaterialTheme

@@ -257,6 +257,40 @@ object ZedTools {
                 listOf("page")
             )
         )
+        tools.put(
+            function(
+                "remember",
+                "Store a durable fact about the user in local memory, such as a parking spot or a name.",
+                JSONObject().put("fact", string("the fact to remember, in the user's words")),
+                listOf("fact")
+            )
+        )
+        tools.put(
+            function(
+                "recall",
+                "Search local memory for facts the user asked you to remember.",
+                JSONObject().put("query", string("search terms, empty for everything")),
+                emptyList()
+            )
+        )
+        tools.put(
+            function(
+                "set_reminder",
+                "Set a reminder that fires after a delay with a note.",
+                JSONObject()
+                    .put("minutes", integer("minutes from now"))
+                    .put("note", string("what to remind about")),
+                listOf("minutes", "note")
+            )
+        )
+        tools.put(
+            function(
+                "status_report",
+                "Report time, battery, unread notifications, current app and guard state.",
+                JSONObject(),
+                emptyList()
+            )
+        )
         tools.put(function("time_now", "Report the current time and date.", JSONObject(), emptyList()))
         tools.put(
             function(
@@ -312,16 +346,27 @@ object ZedTools {
  */
 object ZedPrompts {
 
-    fun system(assistantName: String, jarvisMode: Boolean): String {
-        val persona = if (jarvisMode) {
-            """
-            You are $assistantName, a calm, sharp, witty British-butler-class AI assistant in the
-            spirit of JARVIS. Address the user as "sir" naturally, never in every sentence.
-            Speak with quiet confidence and dry humour. Never grovel. Keep replies short:
-            one or two sentences unless the user asks for detail.
-            """.trimIndent()
+    fun system(
+        assistantName: String,
+        memories: String = "",
+        customInstructions: String = ""
+    ): String {
+        val persona = """
+            You are $assistantName, an advanced phone assistant with real control of this Android
+            device. You are composed, precise and quick, with a dry sense of humour. Address the
+            user as "sir" occasionally, never in every sentence. Keep replies to one or two
+            sentences unless detail is requested. Never sound robotic, never grovel, never invent
+            actions you did not take.
+        """.trimIndent()
+        val custom = if (customInstructions.isBlank()) {
+            ""
         } else {
-            "You are $assistantName, a concise, friendly on-device phone assistant. Keep replies short."
+            """
+
+            User custom instructions (follow these over the defaults above, but never at the cost
+            of safety or honesty):
+            ${customInstructions.trim()}
+            """.trimIndent()
         }
         return """
             $persona
@@ -344,8 +389,13 @@ object ZedPrompts {
             Anti-theft: guard arms motion plus charger detection and sounds a loud siren. Warn the
             user once before arming it.
 
+            Memory: you have durable local memory of things the user asked you to remember. Use
+            remember when the user says "remember ...", and recall before answering questions about
+            saved details. Current memories:
+            ${memories.ifBlank { "- (nothing stored yet)" }}
+
             Privacy: this is an on-device assistant. Do not ask for data you do not need, and never
             suggest uploading conversations anywhere.
-        """.trimIndent()
+        """.trimIndent() + custom
     }
 }

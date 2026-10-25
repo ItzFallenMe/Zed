@@ -13,6 +13,8 @@ Zed is built so that the private parts stay local.
 - **Intruder snapshots.** Private app storage only.
 - **Settings and API key.** Private `SharedPreferences` for this app.
 - **Notification content.** A capped in-memory buffer used to read messages aloud.
+- **Memory.** Facts you ask Zed to remember are stored as JSON in private app storage and can be
+  wiped from Settings → Memory.
 
 ## What touches the network
 

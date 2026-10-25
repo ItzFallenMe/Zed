@@ -1,6 +1,5 @@
 package dev.zed.assistant.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,20 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,21 +32,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
 import dev.zed.assistant.security.AntiTheftService
 import dev.zed.assistant.service.ZedCoreService
-import dev.zed.assistant.ui.theme.ZedCyan
-import dev.zed.assistant.ui.theme.ZedGold
-import dev.zed.assistant.ui.theme.ZedMuted
-import dev.zed.assistant.ui.theme.ZedRed
 
 @Composable
 fun HomeScreen(
@@ -73,240 +61,168 @@ fun HomeScreen(
     val vision by ZedState.screenVisionActive.collectAsState()
 
     var wakeEnabled by remember { mutableStateOf(prefs.wakeEnabled) }
+    var bubbleOn by remember { mutableStateOf(prefs.floatingBubble) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "ZED",
-                    color = ZedCyan,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 6.sp
+                    text = "Zed",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = if (prefs.jarvisMode) "Just A Rather Very Intelligent System"
-                    else "Your on-device assistant",
-                    color = ZedMuted,
-                    fontSize = 10.sp,
-                    letterSpacing = 0.5.sp
+                    text = "Your phone, hands free",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             StatusChip(
-                label = if (wakeActive) "WAKE ARMED" else "WAKE OFF",
+                label = if (wakeActive) "Wake on" else "Wake off",
                 active = wakeActive
             )
             IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = ZedMuted)
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            ReactorOrb(
-                listening = listening,
-                speaking = speaking,
-                thinking = thinking,
-                armed = armed,
-                label = when {
-                    armed -> "guard live"
-                    speaking -> "speaking"
-                    listening -> "listening"
-                    thinking -> "working"
-                    else -> "standby"
-                },
-                onClick = {
-                    if (speaking) ZedCoreService.stopSpeaking(context)
-                    else ZedCoreService.listen(context)
-                }
-            )
-        }
-
-        Text(
-            text = status,
-            color = ZedMuted,
-            fontSize = 12.sp,
-            letterSpacing = 1.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
+        VoiceHero(
+            status = when {
+                armed -> "Anti-theft guard is watching"
+                listening -> "I am listening"
+                speaking -> "Speaking"
+                thinking -> "Working on it"
+                else -> "Standing by"
+            },
+            hint = "Say \"${prefs.wakePhrase}\" anytime",
+            listening = listening,
+            speaking = speaking,
+            thinking = thinking,
+            armed = armed,
+            onListen = {
+                if (speaking) ZedCoreService.stopSpeaking(context)
+                else ZedCoreService.listen(context)
+            }
         )
 
         if (partial.isNotBlank()) {
             Text(
-                text = "\"$partial\"",
-                color = ZedCyan,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp)
+                text = partial,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 10.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentPadding = PaddingValues(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (messages.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Say \"${prefs.wakePhrase}\" or tap the core.",
-                            color = ZedMuted,
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Torch, Wi-Fi, Bluetooth, volume, brightness, alarms, apps, " +
-                                "screen reading, translation and WhatsApp are all wired in.",
-                            color = ZedMuted.copy(alpha = 0.7f),
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 6.dp, start = 12.dp, end = 12.dp)
-                        )
-                    }
+                    Text(
+                        text = "Ask me to change a setting, read the screen, send a WhatsApp " +
+                            "message or scroll a feed. I can also remember things for you.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
                 }
             }
             items(messages) { message -> MessageBubble(message) }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            QuickActionChip("Torch") { ZedCoreService.sendCommand(context, "torch on") }
-            QuickActionChip("Read screen") { ZedCoreService.sendCommand(context, "read screen") }
-            QuickActionChip("Battery") { ZedCoreService.sendCommand(context, "battery") }
-            QuickActionChip("WhatsApp") { ZedCoreService.sendCommand(context, "open whatsapp") }
+            item { QuickAction("Torch") { ZedCoreService.sendCommand(context, "torch on") } }
+            item { QuickAction("Battery") { ZedCoreService.sendCommand(context, "battery") } }
+            item { QuickAction("Read screen") { ZedCoreService.sendCommand(context, "read screen") } }
+            item { QuickAction("Status") { ZedCoreService.sendCommand(context, "status report") } }
+            item { QuickAction("WhatsApp") { ZedCoreService.sendCommand(context, "open whatsapp") } }
+            item {
+                QuickAction(if (bubbleOn) "Bubble on" else "Floating bubble") {
+                    if (!ZedPermissions.canDrawOverlays(context)) {
+                        prefs.floatingBubble = true
+                        bubbleOn = true
+                        ZedPermissions.requestOverlayPermission(context)
+                    } else {
+                        val enable = !bubbleOn
+                        bubbleOn = enable
+                        prefs.floatingBubble = enable
+                        ZedCoreService.setBubble(context, enable)
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Wake word",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Say \"${prefs.wakePhrase}\"",
-                    color = ZedMuted,
-                    fontSize = 11.sp
-                )
-            }
-            Switch(
+        SectionCard(modifier = Modifier.padding(bottom = 14.dp)) {
+            SettingRow(
+                title = "Wake word",
+                subtitle = "Listen for \"${prefs.wakePhrase}\" on device",
                 checked = wakeEnabled,
                 onCheckedChange = { enabled ->
                     wakeEnabled = enabled
                     prefs.wakeEnabled = enabled
                     ZedCoreService.setWake(context, enabled)
-                    if (enabled && !ZedPermissions.isAccessibilityEnabled(context)) onOpenSetup()
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = ZedCyan,
-                    checkedTrackColor = ZedCyan.copy(alpha = 0.3f)
-                )
+                    if (enabled) onOpenSetup()
+                }
             )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { if (vision) ZedCoreService.stopProjection(context) else onRequestProjection() },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (vision) ZedCyan.copy(alpha = 0.2f)
-                    else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                contentPadding = PaddingValues(vertical = 12.dp)
+            DividerLine()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = if (vision) "Vision ON" else "Screen vision",
-                    color = if (vision) ZedCyan else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp
-                )
-            }
-            Button(
-                onClick = {
-                    if (armed) AntiTheftService.disarm(context) else AntiTheftService.arm(context)
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (armed) ZedRed.copy(alpha = 0.25f)
-                    else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                Text(
-                    text = if (armed) "Guard ARMED" else "Anti-theft",
-                    color = if (armed) ZedRed else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp
-                )
-            }
-            Button(
-                onClick = {
-                    if (speaking) ZedCoreService.stopSpeaking(context)
-                    else ZedCoreService.listen(context)
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (listening) ZedGold else ZedCyan,
-                    contentColor = Color(0xFF04121A)
-                ),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                Icon(
-                    imageVector = if (speaking) Icons.Filled.Stop else Icons.Filled.Mic,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.size(6.dp))
-                Text(
-                    text = if (listening) "LISTENING" else "LISTEN",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Box(modifier = Modifier.weight(1f)) {
+                    Pill(
+                        label = if (vision) "Vision on" else "Screen vision",
+                        selected = vision
+                    ) {
+                        if (vision) ZedCoreService.stopProjection(context)
+                        else onRequestProjection()
+                    }
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    Pill(
+                        label = if (armed) "Guard armed" else "Anti-theft",
+                        selected = armed
+                    ) {
+                        if (armed) AntiTheftService.disarm(context)
+                        else AntiTheftService.arm(context)
+                    }
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    Pill(label = "Permissions", selected = false) { onOpenSetup() }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = status,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+        )
     }
 }
 
@@ -316,8 +232,8 @@ private fun MessageBubble(message: ZedState.Message) {
     if (message.role == ZedState.Role.SYSTEM) {
         Text(
             text = message.text,
-            color = ZedMuted,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
@@ -327,28 +243,37 @@ private fun MessageBubble(message: ZedState.Message) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .background(
-                    color = if (isUser) ZedCyan.copy(alpha = 0.18f)
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .padding(horizontal = 12.dp, vertical = 9.dp)
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = if (isUser) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            modifier = Modifier.widthIn(max = 300.dp)
         ) {
-            Text(
-                text = if (isUser) "YOU" else "ZED",
-                color = if (isUser) ZedCyan else ZedGold,
-                fontSize = 9.sp,
-                letterSpacing = 1.5.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = message.text,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp
-            )
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text(
+                    text = if (isUser) "You" else "Zed",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isUser) {
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.size(2.dp))
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isUser) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+            }
         }
     }
 }

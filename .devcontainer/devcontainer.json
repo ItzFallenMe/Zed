@@ -1,0 +1,29 @@
+
+{
+  "name": "Zed AI Assistant - Flutter Android",
+  "image": "ghcr.io/cirruslabs/flutter:stable",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Dart-Code.flutter",
+        "Dart-Code.dart-code",
+        "ms-vscode.vscode-json",
+        "eamodio.gitlens"
+      ]
+    }
+  },
+
+  "forwardPorts": [3000, 8080],
+
+  "postCreateCommand": "flutter doctor && if [ -f pubspec.yaml ]; then flutter pub get; fi",
+
+  "remoteUser": "root"
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zed</string>
+    <string name="accessibility_service_label">Zed Device Control</string>
+    <string name="accessibility_service_description">Allows Zed to read the screen and perform taps, swipes and navigation on your behalf.</string>
+</resources>

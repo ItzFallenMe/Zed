@@ -51,6 +51,7 @@ import dev.zed.assistant.service.ZedCoreService
 import dev.zed.assistant.ui.theme.ZedMuted
 import dev.zed.assistant.voice.TtsVoice
 import dev.zed.assistant.voice.VoiceCatalog
+import dev.zed.assistant.voice.VoiceProfileStore
 import dev.zed.assistant.ui.theme.ZedWhite
 
 @Composable
@@ -78,6 +79,10 @@ fun SettingsScreen(
     var sensitivity by remember { mutableStateOf(prefs.motionSensitivity.toFloat()) }
     var armed by remember { mutableStateOf(ZedState.antiTheftArmed.value) }
     var floatingOn by remember { mutableStateOf(prefs.floatingBubble) }
+    var screenStream by remember { mutableStateOf(prefs.screenStream) }
+    var voiceId by remember { mutableStateOf(prefs.voiceIdEnabled) }
+    val voiceStore = remember { VoiceProfileStore(context) }
+    var enrolled by remember { mutableStateOf(voiceStore.names()) }
     var memoryCount by remember { mutableStateOf(memory.all().size) }
     var ttsVoice by remember { mutableStateOf(prefs.ttsVoiceName) }
     var liveVoice by remember { mutableStateOf(prefs.liveVoiceName) }
@@ -351,6 +356,20 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            SettingRow(
+                title = "Hands-free sharing",
+                subtitle = "Stream frames while you talk, no picking apps",
+                checked = screenStream
+            ) { value ->
+                screenStream = value
+                prefs.screenStream = value
+            }
+            Text(
+                text = "Consent covers the whole session. From then on Zed sees whatever is on " +
+                    "screen during a conversation, the way screen sharing works in Gemini.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZedMuted
+            )
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -394,6 +413,73 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = ZedMuted
             )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionTitle("Voice identity")
+        SectionCard {
+            SettingRow(
+                title = "Recognise my voice",
+                subtitle = "Zed greets the person who is actually talking",
+                checked = voiceId
+            ) { value ->
+                voiceId = value
+                prefs.voiceIdEnabled = value
+            }
+            if (enrolled.isEmpty()) {
+                Text(
+                    text = "No voices enrolled yet. Four seconds of speech is enough.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ZedMuted
+                )
+            } else {
+                enrolled.forEach { name ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            voiceStore.remove(name)
+                            enrolled = voiceStore.names()
+                        }) {
+                            Text("Forget", style = MaterialTheme.typography.labelMedium, color = ZedMuted)
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        if (ZedPermissions.hasMic(context)) {
+                            ZedCoreService.enrollVoice(
+                                context,
+                                userName.ifBlank { prefs.userName }
+                            )
+                        } else {
+                            onOpenSetup()
+                        }
+                    },
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ZedWhite,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Text("Teach my voice", style = MaterialTheme.typography.labelMedium)
+                }
+                Text(
+                    text = "Stored on this phone only",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ZedMuted,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(18.dp))

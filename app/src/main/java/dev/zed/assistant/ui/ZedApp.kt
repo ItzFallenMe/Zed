@@ -37,8 +37,7 @@ private enum class Screen { KEYS, SETUP, HOME, SETTINGS }
 fun ZedApp(
     prefs: ZedPrefs,
     onRequestCapability: (ZedPermissions.Capability) -> Unit,
-    onRequestProjection: () -> Unit,
-    onRequestDeviceAdmin: () -> Unit
+    onRequestProjection: () -> Unit
 ) {
     val context = LocalContext.current
     var screen by remember {
@@ -76,7 +75,7 @@ fun ZedApp(
                         )
                         Screen.SETUP -> SetupScreen(
                             onCapabilityClick = onRequestCapability,
-                            onDeviceAdmin = onRequestDeviceAdmin,
+                            onRequestProjection = onRequestProjection,
                             onDone = {
                                 prefs.onboardingDone = true
                                 screen = Screen.HOME

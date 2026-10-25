@@ -32,15 +32,20 @@ import dev.zed.assistant.ui.FloatingAssistant
 import dev.zed.assistant.vision.OcrEngine
 import dev.zed.assistant.vision.OnDeviceTranslator
 import dev.zed.assistant.vision.ScreenCapture
+import dev.zed.assistant.vision.ScreenStreamer
 import dev.zed.assistant.voice.GeminiLiveClient
 import dev.zed.assistant.voice.MicRecorder
 import dev.zed.assistant.voice.OneShotRecognizer
 import dev.zed.assistant.voice.PcmPlayer
+import dev.zed.assistant.voice.VoiceProfileStore
+import dev.zed.assistant.voice.VoiceSampler
+import dev.zed.assistant.voice.Voiceprint
 import dev.zed.assistant.voice.WakeWordDetector
 import dev.zed.assistant.voice.ZedSpeaker
 import dev.zed.assistant.whatsapp.WhatsAppController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -60,10 +65,12 @@ class ZedCoreService : Service() {
     private lateinit var hardware: HardwareController
     private lateinit var whatsapp: WhatsAppController
     private lateinit var screenCapture: ScreenCapture
+    private lateinit var screenStreamer: ScreenStreamer
     private lateinit var ocr: OcrEngine
     private lateinit var translator: OnDeviceTranslator
     private lateinit var memory: MemoryStore
     private lateinit var speaker: ZedSpeaker
+    private lateinit var voiceProfiles: VoiceProfileStore
     private lateinit var executor: CommandExecutor
     private lateinit var siren: SirenPlayer
 
@@ -82,6 +89,14 @@ class ZedCoreService : Service() {
     @Volatile
     private var liveReady = false
 
+    private val speakerSamples = ShortArray(Voiceprint.SAMPLE_RATE * 2)
+
+    @Volatile
+    private var speakerSampleCount = 0
+
+    @Volatile
+    private var speakerChecked = false
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
@@ -89,9 +104,13 @@ class ZedCoreService : Service() {
         hardware = HardwareController(this)
         whatsapp = WhatsAppController(this)
         screenCapture = ScreenCapture(this)
+        screenStreamer = ScreenStreamer(screenCapture, scope) { jpeg, _, _ ->
+            gemini?.sendVideoFrame(jpeg)
+        }
         ocr = OcrEngine()
         translator = OnDeviceTranslator()
         memory = MemoryStore(this)
+        voiceProfiles = VoiceProfileStore(this)
         siren = SirenPlayer(this)
         speaker = ZedSpeaker(this).apply {
             init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
@@ -158,6 +177,7 @@ class ZedCoreService : Service() {
             }
             ACTION_STOP_PROJECTION -> screenCapture.stop()
             ACTION_STOP_SPEAK -> stopSpeaking()
+            ACTION_ENROLL_VOICE -> enrollVoice(intent.getStringExtra(EXTRA_NAME).orEmpty())
             ACTION_RELOAD -> reloadSettings()
             ACTION_STOP -> shutdown()
             ACTION_SHOW_BUBBLE -> showBubble()
@@ -287,6 +307,7 @@ class ZedCoreService : Service() {
             executeTool = { name, args -> executor.runTool(name, args) }
         ).also { groq = it }
 
+        ZedState.thinking.value = true
         scope.launch {
             val history = ZedState.messages.value
                 .dropLast(1)
@@ -304,6 +325,72 @@ class ZedCoreService : Service() {
                 deliver("My connection just dropped. Say that again in a second?", speakIt = true)
             } else {
                 deliver(reply)
+            }
+        }
+    }
+
+    // ------------------------------------------------------- voice identity
+
+    /** Buffers the opening moments of a session, then quietly works out who is talking. */
+    private fun collectVoiceSample(chunk: ByteArray) {
+        if (!prefs.voiceIdEnabled || speakerChecked) return
+        val shorts = VoiceSampler.toShorts(chunk)
+        val count = speakerSampleCount
+        if (count + shorts.size > speakerSamples.size) {
+            speakerSampleCount = speakerSamples.size
+            return
+        }
+        System.arraycopy(shorts, 0, speakerSamples, count, shorts.size)
+        speakerSampleCount = count + shorts.size
+        if (speakerSampleCount >= Voiceprint.SAMPLE_RATE * 3 / 2) {
+            speakerChecked = true
+            val sample = speakerSamples.copyOf(speakerSampleCount)
+            scope.launch(Dispatchers.Default) { identifySpeaker(sample) }
+        }
+    }
+
+    private fun identifySpeaker(sample: ShortArray) {
+        val match = voiceProfiles.identify(sample)
+        if (match == null) {
+            ZedState.log("VOICE", "No enrolled voice matched")
+            return
+        }
+        val (name, score) = match
+        prefs.lastSpeaker = name
+        ZedState.speaker.value = name
+        ZedState.log("VOICE", "Recognised $name (${String.format("%.2f", score)})")
+        gemini?.sendText(
+            "The person speaking right now is $name. Greet them by name and carry on " +
+                "as if it is obviously them."
+        )
+    }
+
+    private fun enrollVoice(name: String) {
+        val clean = name.trim().ifBlank { prefs.userName }
+        if (clean.isBlank()) {
+            deliver("Tell me your name first, then I'll learn your voice.", speakIt = false)
+            return
+        }
+        if (!ZedPermissions.hasMic(this)) {
+            deliver("I need the microphone before I can learn a voice.", speakIt = false)
+            return
+        }
+        ZedState.enrolling.value = true
+        ZedState.setStatus("Learning your voice")
+        scope.launch {
+            val samples = withContext(Dispatchers.IO) { VoiceSampler.record(4000) }
+            val stored = samples != null && samples.size > Voiceprint.SAMPLE_RATE / 2 &&
+                voiceProfiles.enroll(clean, samples)
+            ZedState.enrolling.value = false
+            ZedState.setStatus("Standby")
+            if (stored) {
+                prefs.userName = clean
+                prefs.lastSpeaker = clean
+                ZedState.speaker.value = clean
+                ZedState.log("VOICE", "Enrolled voice for $clean")
+                deliver("Got it. I'll know it's you from now on.", speakIt = true)
+            } else {
+                deliver("I could not catch your voice. Try again somewhere quieter.", speakIt = true)
             }
         }
     }
@@ -345,8 +432,14 @@ class ZedCoreService : Service() {
         gemini = client
         liveReady = false
         liveTranscript.clear()
+        speakerSampleCount = 0
+        speakerChecked = false
+        ZedState.speaker.value = prefs.lastSpeaker
         player = PcmPlayer(24000).also { it.start() }
-        mic = MicRecorder(16000) { chunk -> client.sendAudio(chunk) }
+        mic = MicRecorder(16000) { chunk ->
+            client.sendAudio(chunk)
+            collectVoiceSample(chunk)
+        }
         ZedState.setStatus("Connecting to Gemini")
         ZedState.log("VOICE", "Opening live session")
         client.connect()
@@ -359,6 +452,7 @@ class ZedCoreService : Service() {
             ZedState.setStatus("Live")
             mic?.start()
             ZedState.log("VOICE", "Live audio streaming")
+            if (prefs.screenStream && screenCapture.isRunning) screenStreamer.start()
             pendingPrompt?.let { prompt ->
                 pendingPrompt = null
                 gemini?.sendText(prompt)
@@ -429,6 +523,7 @@ class ZedCoreService : Service() {
     private fun closeLive() {
         idleJob?.cancel()
         idleJob = null
+        screenStreamer.stop()
         mic?.stop()
         mic = null
         player?.stop()
@@ -535,6 +630,9 @@ class ZedCoreService : Service() {
         val started = screenCapture.start(resultCode, data)
         prefs.lastProjectionAt = System.currentTimeMillis()
         ZedState.log("VISION", if (started) "Screen vision ready" else "Screen vision failed")
+        // Capture consent covers the whole session: start feeding the live conversation
+        // immediately instead of asking the user to share again.
+        if (started && gemini != null && prefs.screenStream) screenStreamer.start()
     }
 
     // ------------------------------------------------------------ plumbing
@@ -611,6 +709,7 @@ class ZedCoreService : Service() {
         oneShot?.cancel()
         speaker.shutdown()
         executor.stopAll()
+        screenStreamer.stop()
         screenCapture.stop()
         siren.stop()
         ZedState.resetRuntime()
@@ -638,6 +737,7 @@ class ZedCoreService : Service() {
         oneShot?.cancel()
         speaker.shutdown()
         executor.stopAll()
+        screenStreamer.stop()
         screenCapture.stop()
         siren.stop()
         ocr.close()
@@ -660,10 +760,12 @@ class ZedCoreService : Service() {
         const val ACTION_RELOAD = "dev.zed.assistant.action.RELOAD"
         const val ACTION_STOP = "dev.zed.assistant.action.STOP"
         const val ACTION_SIREN = "dev.zed.assistant.action.SIREN"
+        const val ACTION_ENROLL_VOICE = "dev.zed.assistant.action.ENROLL_VOICE"
         const val ACTION_SHOW_BUBBLE = "dev.zed.assistant.action.SHOW_BUBBLE"
         const val ACTION_HIDE_BUBBLE = "dev.zed.assistant.action.HIDE_BUBBLE"
 
         const val EXTRA_TEXT = "extra_text"
+        const val EXTRA_NAME = "extra_name"
         const val EXTRA_ENABLED = "extra_enabled"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
@@ -721,6 +823,13 @@ class ZedCoreService : Service() {
             val intent = Intent(context, ZedCoreService::class.java)
                 .setAction(ACTION_SIREN)
                 .putExtra(EXTRA_ENABLED, on)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun enrollVoice(context: Context, name: String) {
+            val intent = Intent(context, ZedCoreService::class.java)
+                .setAction(ACTION_ENROLL_VOICE)
+                .putExtra(EXTRA_NAME, name)
             ContextCompat.startForegroundService(context, intent)
         }
 

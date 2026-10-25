@@ -1,7 +1,6 @@
 package dev.zed.assistant.core
 
 import android.Manifest
-import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -12,7 +11,6 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.zed.assistant.access.ZedAccessibilityService
-import dev.zed.assistant.security.ZedDeviceAdminReceiver
 
 /**
  * Central place that knows which powerful Android permission gates each capability,
@@ -53,9 +51,9 @@ object ZedPermissions {
             "Notification access",
             "Read unread WhatsApp and chat notifications aloud."
         ),
-        DEVICE_ADMIN(
-            "Device admin",
-            "Lock the screen and survive a thief swiping Zed away."
+        OVERLAY(
+            "Display over other apps",
+            "The floating orb that appears when you say Zed from any app."
         )
     }
 
@@ -72,11 +70,6 @@ object ZedPermissions {
 
     fun canWriteSettings(context: Context): Boolean =
         Settings.System.canWrite(context)
-
-    fun isDeviceAdminActive(context: Context): Boolean {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        return dpm.isAdminActive(ComponentName(context, ZedDeviceAdminReceiver::class.java))
-    }
 
     fun isAccessibilityEnabled(context: Context): Boolean {
         if (ZedAccessibilityService.instance != null) return true
@@ -117,7 +110,7 @@ object ZedPermissions {
         Capability.WRITE_SETTINGS -> canWriteSettings(context)
         Capability.ACCESSIBILITY -> isAccessibilityEnabled(context)
         Capability.NOTIFICATION_ACCESS -> isNotificationListenerEnabled(context)
-        Capability.DEVICE_ADMIN -> isDeviceAdminActive(context)
+        Capability.OVERLAY -> canDrawOverlays(context)
     }
 
     /** Capabilities that must be granted from a settings screen instead of a runtime dialog. */
@@ -125,7 +118,7 @@ object ZedPermissions {
         Capability.WRITE_SETTINGS,
         Capability.ACCESSIBILITY,
         Capability.NOTIFICATION_ACCESS,
-        Capability.DEVICE_ADMIN
+        Capability.OVERLAY
     )
 
     fun openSettingsScreen(context: Context, capability: Capability) {
@@ -137,7 +130,10 @@ object ZedPermissions {
             Capability.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             Capability.NOTIFICATION_ACCESS ->
                 Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-            Capability.DEVICE_ADMIN -> null
+            Capability.OVERLAY -> Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
             else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 .setData(Uri.parse("package:${context.packageName}"))
         }

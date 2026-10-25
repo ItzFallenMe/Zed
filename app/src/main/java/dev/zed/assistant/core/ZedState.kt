@@ -37,6 +37,10 @@ object ZedState {
     val antiTheftArmed = MutableStateFlow(false)
     val sirenActive = MutableStateFlow(false)
 
+    /** Name of the person recognised from their voiceprint, if any. */
+    val speaker = MutableStateFlow("")
+    val enrolling = MutableStateFlow(false)
+
     fun addMessage(role: Role, text: String) {
         if (text.isBlank()) return
         messages.value = (messages.value + Message(role, text.trim())).takeLast(MAX_MESSAGES)

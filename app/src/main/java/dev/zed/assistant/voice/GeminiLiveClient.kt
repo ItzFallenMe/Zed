@@ -192,6 +192,23 @@ class GeminiLiveClient(
         socket?.send(payload.toString())
     }
 
+    /** Pushes one screen frame into the conversation, hands-free. */
+    fun sendVideoFrame(jpeg: ByteArray, mimeType: String = "image/jpeg") {
+        if (!ready || jpeg.isEmpty()) return
+        val payload = JSONObject().put(
+            "realtimeInput",
+            JSONObject().put(
+                "mediaChunks",
+                JSONArray().put(
+                    JSONObject()
+                        .put("mimeType", mimeType)
+                        .put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                )
+            )
+        )
+        socket?.send(payload.toString())
+    }
+
     fun sendText(text: String) {
         if (!ready || text.isBlank()) return
         val payload = JSONObject().put(

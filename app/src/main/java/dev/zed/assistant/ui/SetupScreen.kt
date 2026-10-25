@@ -30,7 +30,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun SetupScreen(
     onCapabilityClick: (ZedPermissions.Capability) -> Unit,
-    onDeviceAdmin: () -> Unit,
+    onRequestProjection: () -> Unit,
     onDone: () -> Unit
 ) {
     val context = LocalContext.current
@@ -94,16 +94,42 @@ fun SetupScreen(
                     granted = statuses[capability] == true,
                     onGrant = {
                         when (capability) {
-                            ZedPermissions.Capability.DEVICE_ADMIN -> onDeviceAdmin()
                             ZedPermissions.Capability.ACCESSIBILITY,
                             ZedPermissions.Capability.NOTIFICATION_ACCESS,
-                            ZedPermissions.Capability.WRITE_SETTINGS ->
+                            ZedPermissions.Capability.WRITE_SETTINGS,
+                            ZedPermissions.Capability.OVERLAY ->
                                 ZedPermissions.openSettingsScreen(context, capability)
                             else -> onCapabilityClick(capability)
                         }
                     }
                 )
                 if (index != ZedPermissions.Capability.entries.lastIndex) DividerLine()
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionCard {
+            Text(
+                text = "Hands-free screen",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Android asks once per session for screen capture. Grant it here and Zed " +
+                    "keeps watching whatever is on screen while you talk — no app picker later.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+            Button(
+                onClick = onRequestProjection,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Enable screen awareness",
+                    style = MaterialTheme.typography.labelMedium
+                )
             }
         }
 

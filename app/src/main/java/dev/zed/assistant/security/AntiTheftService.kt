@@ -3,7 +3,6 @@ package dev.zed.assistant.security
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -27,6 +26,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import dev.zed.assistant.MainActivity
 import dev.zed.assistant.R
+import dev.zed.assistant.access.ZedAccessibilityService
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
@@ -200,12 +200,14 @@ class AntiTheftService : LifecycleService(), SensorEventListener {
     }
 
     private fun lockScreen() {
-        if (!ZedPermissions.isDeviceAdminActive(this)) return
-        runCatching {
-            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            dpm.lockNow()
-            ZedState.log("GUARD", "Screen locked")
+        // Accessibility can lock the screen without device-admin, which keeps the app far
+        // less alarming to Play Protect on a sideloaded install.
+        val service = ZedAccessibilityService.instance
+        if (service == null) {
+            ZedState.log("GUARD", "Accessibility off; cannot lock the screen")
+            return
         }
+        if (service.lockScreen()) ZedState.log("GUARD", "Screen locked")
     }
 
     private fun captureSnapshot(reason: String) {

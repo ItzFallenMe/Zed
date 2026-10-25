@@ -1,8 +1,6 @@
 package dev.zed.assistant
 
 import android.Manifest
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -13,7 +11,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
 import dev.zed.assistant.core.ZedState
-import dev.zed.assistant.security.ZedDeviceAdminReceiver
 import dev.zed.assistant.service.ZedCoreService
 import dev.zed.assistant.ui.ZedApp
 
@@ -50,8 +47,7 @@ class MainActivity : ComponentActivity() {
             ZedApp(
                 prefs = prefs,
                 onRequestCapability = ::requestCapability,
-                onRequestProjection = ::requestProjection,
-                onRequestDeviceAdmin = ::requestDeviceAdmin
+                onRequestProjection = ::requestProjection
             )
         }
     }
@@ -109,16 +105,5 @@ class MainActivity : ComponentActivity() {
         } catch (t: Throwable) {
             ZedState.log("VISION", "Screen capture unavailable: ${t.message}")
         }
-    }
-
-    private fun requestDeviceAdmin() {
-        val component = ComponentName(this, ZedDeviceAdminReceiver::class.java)
-        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-            .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, component)
-            .putExtra(
-                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                "Lets Zed lock the screen when the anti-theft guard detects an intruder."
-            )
-        ZedPermissions.launchSafely(this, intent)
     }
 }

@@ -12,8 +12,8 @@ android {
         applicationId = "dev.zed.assistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = System.getenv("ZED_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("ZED_VERSION_NAME") ?: "1.0.0"
         resourceConfigurations += listOf("en", "hi")
         vectorDrawables.useSupportLibrary = true
     }
@@ -34,6 +34,10 @@ android {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            // Real phones are ARM; shipping x86 keeps the APK ~50 MB larger for no benefit.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
             if (file("../keystore/zed-release.jks").exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }

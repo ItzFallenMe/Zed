@@ -1,6 +1,6 @@
-
 {
-  "name": "Zed AI Assistant - Flutter Android",
+  "name": "Zed AI Assistant - Android (Kotlin)",
+
   "image": "ghcr.io/cirruslabs/flutter:stable",
 
   "features": {
@@ -13,8 +13,8 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "Dart-Code.flutter",
-        "Dart-Code.dart-code",
+        "vscjava.vscode-java-pack",
+        "fwcd.kotlin",
         "ms-vscode.vscode-json",
         "eamodio.gitlens"
       ]
@@ -23,7 +23,7 @@
 
   "forwardPorts": [3000, 8080],
 
-  "postCreateCommand": "flutter doctor && if [ -f pubspec.yaml ]; then flutter pub get; fi",
+  "postCreateCommand": "chmod +x ./gradlew && ./gradlew --version",
 
   "remoteUser": "root"
 }

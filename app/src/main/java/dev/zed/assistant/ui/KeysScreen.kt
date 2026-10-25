@@ -26,10 +26,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -233,14 +236,18 @@ private fun KeyCard(
     onGetKey: () -> Unit
 ) {
     val filled = value.isNotBlank()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color.White.copy(alpha = 0.055f))
-            .border(1.dp, if (filled) Color.White.copy(alpha = 0.32f) else ZedGlassBorder, RoundedCornerShape(24.dp))
-            .padding(16.dp)
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (filled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
+        Column(modifier = Modifier.padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -302,6 +309,7 @@ private fun KeyCard(
                     .clickable(onClick = onGetKey)
                     .padding(8.dp)
             )
+        }
         }
     }
 }

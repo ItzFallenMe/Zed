@@ -44,8 +44,10 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -169,7 +171,7 @@ fun HomeScreen(
                     )
                 }
             }
-            items(messages, key = { it.timestamp + it.text.hashCode() }) { message ->
+            items(messages, key = { it.id }) { message ->
                 MessageBubble(message)
             }
             if (partial.isNotBlank()) {
@@ -311,18 +313,37 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 10.dp)
-                            .clip(RoundedCornerShape(28.dp))
-                            .background(Color.White.copy(alpha = 0.07f))
-                            .border(1.dp, ZedGlassBorder, RoundedCornerShape(28.dp))
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                MaterialTheme.shapes.extraLarge
+                            )
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant,
+                                MaterialTheme.shapes.extraLarge
+                            )
                             .padding(start = 8.dp, end = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
+                        FilledIconButton(
                             onClick = {
                                 if (!ZedPermissions.hasMic(context)) onOpenSetup()
                                 else if (speaking) ZedCoreService.stopSpeaking(context)
                                 else ZedCoreService.listen(context)
-                            }
+                            },
+                            shape = CircleShape,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (listening || speaking) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                contentColor = if (listening || speaking) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
                         ) {
                             val pulse by rememberInfiniteTransition(label = "mic").animateFloat(
                                 initialValue = 1f,
@@ -337,16 +358,7 @@ fun HomeScreen(
                                     else -> Icons.Rounded.Mic
                                 },
                                 contentDescription = "Talk to Zed",
-                                tint = if (listening || speaking) Color.Black else ZedWhite,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .scale(pulse)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (listening || speaking) ZedWhite
-                                        else Color.White.copy(alpha = 0.08f)
-                                    )
-                                    .padding(9.dp)
+                                modifier = Modifier.size(22.dp).scale(pulse)
                             )
                         }
                         OutlinedTextField(
@@ -371,21 +383,20 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f)
                         )
                         val sendEnabled = draft.isNotBlank()
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (sendEnabled) ZedWhite else Color.White.copy(alpha = 0.08f)
-                                )
-                                .clickable(enabled = sendEnabled) { sendMessage(draft) },
-                            contentAlignment = Alignment.Center
+                        FilledIconButton(
+                            onClick = { sendMessage(draft) },
+                            enabled = sendEnabled,
+                            shape = CircleShape,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.ArrowUpward,
                                 contentDescription = "Send",
-                                tint = if (sendEnabled) Color.Black
-                                else Color.White.copy(alpha = 0.4f),
                                 modifier = Modifier.size(20.dp)
                             )
                         }

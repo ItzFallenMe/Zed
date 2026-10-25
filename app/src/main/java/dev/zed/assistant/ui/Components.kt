@@ -6,10 +6,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,14 +19,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -42,7 +47,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,26 +56,31 @@ import dev.zed.assistant.ui.theme.ZedWhite
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** Frosted panel: translucent white fill, hairline highlight border. */
+/**
+ * Shared building blocks, built from Material 3 primitives (Card, ListItem, chips, filled
+ * buttons) and tinted with the monochrome glass palette. Material supplies the shapes,
+ * elevation, state layers and touch targets; the theme supplies the look.
+ */
+
+/** Frosted panel: a Material 3 card with a translucent container and a hairline border. */
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
     strong: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        if (strong) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.07f),
-                        if (strong) Color.White.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.035f)
-                    )
-                )
-            )
-            .border(1.dp, ZedGlassBorder, RoundedCornerShape(28.dp))
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = if (strong) {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            }
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp), content = content)
     }
@@ -87,29 +96,34 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/** Status pill. Material's AssistChip gives it the right height and touch target. */
 @Composable
 fun StatusChip(label: String, active: Boolean, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(if (active) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.06f))
-            .border(1.dp, if (active) Color.White.copy(alpha = 0.28f) else ZedGlassBorder, CircleShape)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(if (active) ZedWhite else Color.White.copy(alpha = 0.35f))
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (active) ZedWhite else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+    AssistChip(
+        onClick = {},
+        label = {
+            Text(text = label, style = MaterialTheme.typography.labelSmall)
+        },
+        modifier = modifier,
+        shape = CircleShape,
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (active) {
+                Color.White.copy(alpha = 0.16f)
+            } else {
+                Color.White.copy(alpha = 0.06f)
+            },
+            labelColor = if (active) ZedWhite else MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        border = AssistChipDefaults.assistChipBorder(
+            enabled = true,
+            borderColor = if (active) Color.White.copy(alpha = 0.28f) else ZedGlassBorder
+        ),
+        leadingIcon = {
+            Canvas(modifier = Modifier.size(6.dp)) {
+                drawCircle(color = if (active) ZedWhite else Color.White.copy(alpha = 0.35f))
+            }
+        }
+    )
 }
 
 /** Monochrome audio bars with a slow organic wave. */
@@ -151,7 +165,7 @@ fun Waveform(
     }
 }
 
-/** Hero glass panel: status, waveform and the primary talk action. */
+/** Hero panel: status, avatar, waveform and the primary talk action. */
 @Composable
 fun VoiceHero(
     status: String,
@@ -163,27 +177,22 @@ fun VoiceHero(
     onListen: () -> Unit
 ) {
     val active = listening || speaking || thinking
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(34.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.16f),
-                        Color.White.copy(alpha = 0.05f),
-                        Color.Transparent
-                    )
-                )
-            )
-            .border(
-                1.dp,
-                if (armed) Color.White.copy(alpha = 0.34f) else ZedGlassBorder,
-                RoundedCornerShape(34.dp)
-            )
-            .padding(24.dp)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (armed) Color.White.copy(alpha = 0.34f) else MaterialTheme.colorScheme.outlineVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -191,7 +200,7 @@ fun VoiceHero(
                 Text(
                     text = if (armed) "Guard armed" else "Zed",
                     style = MaterialTheme.typography.titleMedium,
-                    color = ZedWhite
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
@@ -202,7 +211,7 @@ fun VoiceHero(
                         else -> "READY"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.65f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -226,25 +235,21 @@ fun VoiceHero(
             Text(
                 text = status,
                 style = MaterialTheme.typography.titleSmall,
-                color = ZedWhite,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
                 text = hint,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(18.dp))
-            Button(
+            FilledTonalButton(
                 onClick = onListen,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = ZedWhite,
-                    contentColor = Color.Black
-                )
+                shape = CircleShape
             ) {
                 Icon(
                     imageVector = if (speaking) Icons.Rounded.Stop else Icons.Rounded.Mic,
@@ -261,6 +266,7 @@ fun VoiceHero(
     }
 }
 
+/** Permission row. A ListItem keeps Material's spacing and semantics. */
 @Composable
 fun CapabilityRow(
     title: String,
@@ -268,64 +274,59 @@ fun CapabilityRow(
     granted: Boolean,
     onGrant: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+    ListItem(
+        headlineContent = {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+        },
+        supportingContent = {
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-        Spacer(modifier = Modifier.size(12.dp))
-        if (granted) {
-            Text(
-                text = "Ready",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.85f),
-                fontWeight = FontWeight.Medium
-            )
-        } else {
-            TextButton(onClick = onGrant) {
-                Text("Allow", style = MaterialTheme.typography.labelLarge, color = ZedWhite)
+        },
+        trailingContent = {
+            if (granted) {
+                Text(
+                    text = "Ready",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium
+                )
+            } else {
+                TextButton(onClick = onGrant) {
+                    Text("Allow", style = MaterialTheme.typography.labelLarge)
+                }
             }
-        }
-    }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
 }
 
+/** Quick action chip on the home glass bar. */
 @Composable
 fun QuickAction(label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.07f))
-            .border(1.dp, ZedGlassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.55f))
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White
-        )
-    }
+    AssistChip(
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        shape = CircleShape,
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = Color.White.copy(alpha = 0.07f),
+            labelColor = MaterialTheme.colorScheme.onSurface
+        ),
+        border = AssistChipDefaults.assistChipBorder(
+            enabled = true,
+            borderColor = ZedGlassBorder
+        ),
+        leadingIcon = {
+            Canvas(modifier = Modifier.size(5.dp)) {
+                drawCircle(color = Color.White.copy(alpha = 0.55f))
+            }
+        }
+    )
 }
 
+/** Settings toggle row, on a Material 3 ListItem. */
 @Composable
 fun SettingRow(
     title: String,
@@ -334,65 +335,91 @@ fun SettingRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
+    ListItem(
+        modifier = modifier,
+        headlineContent = {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (subtitle != null) {
+        },
+        supportingContent = subtitle?.let { text ->
+            {
                 Text(
-                    text = subtitle,
+                    text = text,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
-        Spacer(modifier = Modifier.size(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.Black,
-                checkedTrackColor = ZedWhite,
-                uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
-                uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
-                uncheckedBorderColor = ZedGlassBorder
+        },
+        trailingContent = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                    uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
+                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                )
             )
-        )
-    }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
 }
 
 @Composable
 fun DividerLine() {
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 6.dp),
-        color = Color.White.copy(alpha = 0.07f)
+        color = MaterialTheme.colorScheme.outlineVariant
     )
 }
 
+/** Selectable pill, as a Material 3 FilterChip. */
 @Composable
 fun Pill(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(if (selected) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f))
-            .border(
-                1.dp,
-                if (selected) Color.White.copy(alpha = 0.4f) else ZedGlassBorder,
-                CircleShape
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) ZedWhite else MaterialTheme.colorScheme.onSurfaceVariant
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        shape = CircleShape,
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = Color.White.copy(alpha = 0.06f),
+            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+            selectedLabelColor = MaterialTheme.colorScheme.onSurface
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = MaterialTheme.colorScheme.outlineVariant,
+            selectedBorderColor = MaterialTheme.colorScheme.outline
         )
-    }
+    )
+}
+
+/** Small filled icon button used by the composer. */
+@Composable
+fun CircleIconButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    container: Color = MaterialTheme.colorScheme.primary,
+    content: Color = MaterialTheme.colorScheme.onPrimary,
+    contentComposable: @Composable () -> Unit
+) {
+    FilledTonalIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = container,
+            contentColor = content,
+            disabledContainerColor = Color.White.copy(alpha = 0.08f),
+            disabledContentColor = Color.White.copy(alpha = 0.4f)
+        ),
+        content = contentComposable
+    )
 }

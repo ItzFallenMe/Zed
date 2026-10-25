@@ -64,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -136,13 +137,53 @@ fun HomeScreen(
                 .imePadding()
         ) {
             // ------------------------------------------------------------ header
+            // Frosted bar that only appears once the conversation scrolls under it,
+            // the way a glass sheet picks up the content behind it.
+            val frost by animateFloatAsState(
+                targetValue = if (listState.canScrollBackward) 1f else 0f,
+                animationSpec = tween(320),
+                label = "frost"
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 12.dp, top = 10.dp),
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.92f * frost),
+                                Color.Black.copy(alpha = 0.55f * frost),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                    .padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.animateContentSize()) {
+                Box(
+                    modifier = Modifier.animateContentSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val halo by rememberInfiniteTransition(label = "halo").animateFloat(
+                        initialValue = 0.25f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Reverse),
+                        label = "haloAlpha"
+                    )
+                    if (listening || speaking || thinking) {
+                        Box(
+                            modifier = Modifier
+                                .size(74.dp)
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.16f * halo),
+                                            Color.Transparent
+                                        )
+                                    ),
+                                    CircleShape
+                                )
+                        )
+                    }
                     ZedAvatar(mood = mood, size = 54)
                 }
                 Spacer(modifier = Modifier.size(12.dp))

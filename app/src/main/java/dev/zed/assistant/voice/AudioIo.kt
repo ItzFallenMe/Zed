@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import dev.zed.assistant.core.ZedState
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
@@ -20,6 +22,8 @@ class MicRecorder(
 ) {
     private var record: AudioRecord? = null
     private var worker: Thread? = null
+    private var echoCanceller: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
 
     @Volatile
     private var running = false
@@ -58,6 +62,20 @@ class MicRecorder(
         }
         record = recorder
         running = true
+        // Full-duplex conversation: without echo cancellation Zed hears its own voice through
+        // the speaker and interrupts itself. Attach the platform effects where available.
+        runCatching {
+            if (AcousticEchoCanceler.isAvailable()) {
+                echoCanceller = AcousticEchoCanceler.create(recorder.audioSessionId)
+                    ?.apply { enabled = true }
+            }
+        }
+        runCatching {
+            if (NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(recorder.audioSessionId)
+                    ?.apply { enabled = true }
+            }
+        }
         recorder.startRecording()
         worker = thread(name = "zed-mic", isDaemon = true) {
             val chunk = ByteArray(CHUNK_BYTES)
@@ -81,6 +99,10 @@ class MicRecorder(
         running = false
         worker?.interrupt()
         worker = null
+        runCatching { echoCanceller?.release() }
+        runCatching { noiseSuppressor?.release() }
+        echoCanceller = null
+        noiseSuppressor = null
         record?.let {
             runCatching { it.stop() }
             runCatching { it.release() }

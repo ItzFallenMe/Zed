@@ -135,7 +135,7 @@ class HardwareController(private val context: Context) {
                 AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0
             )
         }
-        return "Audio muted, sir."
+        return "Audio muted."
     }
 
     fun unmuteAll(): String {
@@ -393,34 +393,66 @@ class HardwareController(private val context: Context) {
         }
     }
 
-    fun findContactNumber(name: String): String? {
+    /** Outcome of calling by name. Two people called Rahul is not a call, it is a question. */
+    sealed class ContactCall {
+        data class Calling(val name: String) : ContactCall()
+        data class Ambiguous(val names: List<String>) : ContactCall()
+        object NotFound : ContactCall()
+        object Failed : ContactCall()
+    }
+
+    fun findContactNumber(name: String): String? = findContacts(name).firstOrNull()?.second
+
+    fun findContacts(name: String): List<Pair<String, String>> {
         if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            return null
+            return emptyList()
         }
         val uri = Uri.withAppendedPath(
             ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(name)
         )
-        val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
         return try {
             context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
+                val out = mutableListOf<Pair<String, String>>()
+                while (cursor.moveToNext() && out.size < MAX_CONTACT_MATCHES) {
+                    val label = cursor.getString(0).orEmpty().trim()
+                    val number = cursor.getString(1).orEmpty().trim()
+                    if (number.isNotBlank()) {
+                        out += (label.ifBlank { name }) to number
+                    }
+                }
+                out
+            }.orEmpty()
         } catch (t: Throwable) {
             ZedState.log("CONTACTS", "Lookup failed: ${t.message}")
-            null
+            emptyList()
         }
     }
 
-    fun callByName(name: String): Boolean {
-        val number = findContactNumber(name)
-        if (number == null) {
+    fun callContactByName(name: String): ContactCall {
+        val matches = findContacts(name)
+        if (matches.isEmpty()) {
             ZedState.log("CALL", "No contact matched \"$name\"")
-            return false
+            return ContactCall.NotFound
         }
-        return callNumber(number)
+        val people = matches.map { it.first }.distinct()
+        if (people.size > 1) {
+            ZedState.log("CALL", "Ambiguous contact \"$name\": ${people.joinToString()}")
+            return ContactCall.Ambiguous(people.take(3))
+        }
+        return if (callNumber(matches.first().second)) {
+            ContactCall.Calling(people.first())
+        } else {
+            ContactCall.Failed
+        }
     }
+
+    fun callByName(name: String): Boolean = callContactByName(name) is ContactCall.Calling
 
     // ------------------------------------------------------------ media
 
@@ -505,5 +537,6 @@ class HardwareController(private val context: Context) {
 
     companion object {
         private const val TAG = "ZedHardware"
+        private const val MAX_CONTACT_MATCHES = 8
     }
 }

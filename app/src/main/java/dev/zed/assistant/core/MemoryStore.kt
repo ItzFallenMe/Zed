@@ -2,6 +2,7 @@ package dev.zed.assistant.core
 
 import android.content.Context
 import dev.zed.assistant.core.memory.GeminiEmbeddings
+import dev.zed.assistant.core.memory.MemoryPolicy
 import dev.zed.assistant.core.memory.MemorySummarizer
 import dev.zed.assistant.core.memory.TextEmbedder
 import org.json.JSONArray
@@ -49,18 +50,45 @@ class MemoryStore(
 
     // ------------------------------------------------------------- writing
 
+    sealed class RememberResult {
+        data class Kept(val id: String) : RememberResult()
+        data class AlreadyKnown(val id: String) : RememberResult()
+        data class Refused(val reason: String) : RememberResult()
+    }
+
+    /**
+     * Stores a durable fact on purpose. The policy is the gate: credentials never pass,
+     * questions and small talk never pass, everything a friend would remember does.
+     */
     @Synchronized
-    fun remember(fact: String): String? {
+    fun remember(fact: String): RememberResult {
         val cleaned = fact.trim().trim('.').trim()
-        if (cleaned.length < 3) return null
-        return add(Kind.FACT, cleaned, "user")
+        val decision = MemoryPolicy.judge(cleaned, explicit = true)
+        if (decision.kind == MemoryPolicy.Kind.REFUSE) {
+            ZedState.log("MEMORY", "Refused to keep it: ${decision.reason}")
+            return RememberResult.Refused(decision.reason)
+        }
+        if (isKnown(cleaned)) {
+            return RememberResult.AlreadyKnown(cleaned)
+        }
+        val id = add(Kind.FACT, cleaned, "user")
+        return if (id == null) RememberResult.Refused("could not store it") else RememberResult.Kept(id)
     }
 
     @Synchronized
     fun addEpisode(text: String, source: String = "auto"): String? {
         val cleaned = text.trim()
         if (cleaned.length < 8) return null
+        // Summaries are written by a model, so the same secret filter applies to them.
+        if (MemoryPolicy.looksLikeCredential(cleaned)) {
+            ZedState.log("MEMORY", "Episode dropped: it looked like a credential")
+            return null
+        }
         return add(Kind.EPISODE, cleaned, source)
+    }
+
+    fun isKnown(text: String): Boolean = snapshot().any {
+        it.kind == Kind.FACT && it.text.equals(text.trim(), ignoreCase = true)
     }
 
     /**
@@ -120,7 +148,11 @@ class MemoryStore(
 
     private fun rememberInternal(fact: String, source: String): String? {
         val cleaned = fact.trim().trim('.')
-        if (cleaned.length < 3) return null
+        val decision = MemoryPolicy.judge(cleaned)
+        if (decision.kind != MemoryPolicy.Kind.PERMANENT) {
+            ZedState.log("MEMORY", "Skipped an extracted fact: ${decision.reason}")
+            return null
+        }
         return add(Kind.FACT, cleaned, source)
     }
 

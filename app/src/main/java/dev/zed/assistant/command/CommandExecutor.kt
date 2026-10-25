@@ -94,10 +94,17 @@ class CommandExecutor(
             ParsedCommand.Kind.REMEMBER -> {
                 if (command.target.isBlank()) {
                     "What should I remember?"
-                } else if (memory.remember(command.target) != null) {
-                    "Got it. I'll remember that."
                 } else {
-                    "That was too short to remember."
+                    when (val kept = memory.remember(command.target)) {
+                        is MemoryStore.RememberResult.Kept -> "Got it. That's permanent now."
+                        is MemoryStore.RememberResult.AlreadyKnown -> "I already had that one."
+                        is MemoryStore.RememberResult.Refused ->
+                            if (kept.reason.contains("credential")) {
+                                "No. I don't keep passwords, codes or keys, not even for you."
+                            } else {
+                                "That's not something worth keeping forever."
+                            }
+                    }
                 }
             }
             ParsedCommand.Kind.RECALL -> {
@@ -166,10 +173,15 @@ class CommandExecutor(
             }
 
             ParsedCommand.Kind.CALL_CONTACT -> {
-                if (hardware.callByName(command.target)) {
-                    "Calling ${command.target}."
-                } else {
-                    "I could not find ${command.target} in your contacts."
+                when (val call = hardware.callContactByName(command.target)) {
+                    is HardwareController.ContactCall.Calling -> "Calling ${call.name}."
+                    is HardwareController.ContactCall.Ambiguous ->
+                        "I have ${call.names.joinToString(" and ")} in your contacts. " +
+                            "Which one should I call?"
+                    HardwareController.ContactCall.NotFound ->
+                        "I could not find ${command.target} in your contacts."
+                    HardwareController.ContactCall.Failed ->
+                        "The call was blocked by the system."
                 }
             }
             ParsedCommand.Kind.CALL_NUMBER -> {

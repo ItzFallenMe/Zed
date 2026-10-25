@@ -31,13 +31,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configure Android SDK
+        run: |
+          SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [ ! -d "$SDK_DIR" ]; then SDK_DIR="/usr/local/lib/android/sdk"; fi
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "Using SDK at $SDK_DIR"
+          ls "$SDK_DIR"
 
       - name: Install SDK platform and build tools
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          SDK_DIR="$ANDROID_HOME"
+          SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -name sdkmanager | sort | head -1)
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          if [ ! -d "$SDK_DIR/platforms/android-36" ]; then
+            yes | "$SDKMANAGER" "platforms;android-36" || true
+          fi
+          if [ ! -d "$SDK_DIR/build-tools/36.0.0" ]; then
+            yes | "$SDKMANAGER" "build-tools;36.0.0" || true
+          fi
+          ls "$SDK_DIR/platforms"
+          test -d "$SDK_DIR/platforms/android-36" || { echo "android-36 platform missing"; exit 1; }
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

@@ -1,0 +1,30 @@
+package dev.zed.assistant.command
+
+data class ParsedCommand(
+    val kind: Kind,
+    val raw: String = "",
+    val target: String = "",
+    val message: String = "",
+    val number: Int = -1,
+    val hour: Int = -1,
+    val minute: Int = -1
+) {
+    enum class Kind {
+        TORCH_ON, TORCH_OFF, TORCH_TOGGLE,
+        WIFI_ON, WIFI_OFF, BT_ON, BT_OFF,
+        VOLUME_UP, VOLUME_DOWN, VOLUME_SET, MUTE, UNMUTE,
+        BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_AUTO,
+        BATTERY, ALARM_SET, ALARM_SHOW, TIMER_SET,
+        OPEN_APP, OPEN_URL, WEB_SEARCH,
+        CALL_CONTACT, CALL_NUMBER,
+        WHATSAPP_SEND, WHATSAPP_CALL, WHATSAPP_VIDEO_CALL, WHATSAPP_VOICE_NOTE, WHATSAPP_SEARCH,
+        READ_SCREEN, READ_NOTIFICATIONS, TRANSLATE_SCREEN, SCREENSHOT,
+        SCROLL_UP, SCROLL_DOWN, TAP_TEXT, TYPE_TEXT,
+        BACK, HOME, RECENTS, LOCK_SCREEN, QUICK_SETTINGS, NOTIFICATIONS_PANEL, POWER_MENU,
+        MEDIA_TOGGLE, MEDIA_NEXT, MEDIA_PREV,
+        TIME, DATE,
+        SIREN_ON, SIREN_OFF, ARM_GUARD, DISARM_GUARD,
+        AUTO_SCROLL_START, AUTO_SCROLL_STOP,
+        HELP, UNKNOWN
+    }
+}

@@ -2,5 +2,6 @@
 <resources>
     <string name="app_name">Zed</string>
     <string name="accessibility_service_label">Zed Device Control</string>
-    <string name="accessibility_service_description">Allows Zed to read the screen and perform taps, swipes and navigation on your behalf.</string>
+    <string name="accessibility_service_description">Lets Zed read the screen and perform taps, swipes, scrolling and typing on your behalf. Used only for commands you give.</string>
+    <string name="notification_listener_label">Zed Notification Reader</string>
 </resources>

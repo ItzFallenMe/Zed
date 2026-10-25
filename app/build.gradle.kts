@@ -12,8 +12,8 @@ android {
         applicationId = "dev.zed.assistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = System.getenv("ZED_VERSION_CODE")?.toIntOrNull() ?: 2
-        versionName = System.getenv("ZED_VERSION_NAME") ?: "1.1.0"
+        versionCode = System.getenv("ZED_VERSION_CODE")?.toIntOrNull() ?: 3
+        versionName = System.getenv("ZED_VERSION_NAME") ?: "1.1.1"
         resourceConfigurations += listOf("en", "hi")
         vectorDrawables.useSupportLibrary = true
     }

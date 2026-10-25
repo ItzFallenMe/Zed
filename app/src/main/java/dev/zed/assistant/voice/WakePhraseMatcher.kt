@@ -36,6 +36,31 @@ object WakePhraseMatcher {
         }
     }
 
+    /**
+     * Drops a wake phrase from the front of a transcript, so the model never receives the
+     * bare name as if it were a request: "hey zed, what's the time" → "what's the time".
+     * Returns an empty string when the name was all that was said.
+     */
+    fun stripWake(transcript: String, phrase: String): String {
+        val configured = normalize(phrase).ifBlank { DEFAULT_PHRASE }
+        val wakeTokens = (triggers + assistantAliases + configured.split(' '))
+            .flatMap { normalize(it).split(' ') }
+            .filter { it.isNotBlank() }
+            .toSet()
+        val words = transcript.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        var index = 0
+        while (index < words.size) {
+            val word = normalize(words[index])
+            if (word.isBlank() || word !in wakeTokens) break
+            index++
+        }
+        return words.drop(index)
+            .joinToString(" ")
+            .trim()
+            .trim(',', '.', '!', '?', '।', ';', ':')
+            .trim()
+    }
+
     private fun containsWordLike(text: String, token: String): Boolean {
         if (token.isBlank()) return false
         var index = text.indexOf(token)

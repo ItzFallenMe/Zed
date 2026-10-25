@@ -88,7 +88,10 @@ fun ZedApp(
                             prefs = prefs,
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onOpenSetup = { screen = Screen.SETUP },
-                            onRequestProjection = onRequestProjection
+                            onRequestProjection = onRequestProjection,
+                            onRequestOverlay = {
+                                ZedPermissions.requestOverlayPermission(context)
+                            }
                         )
                         Screen.SETTINGS -> SettingsScreen(
                             prefs = prefs,

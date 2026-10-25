@@ -44,6 +44,9 @@ object ZedState {
     /** Name of the person recognised from their voiceprint, if any. */
     val speaker = MutableStateFlow("")
 
+    /** True when the floating menu wants to appear but Android has not granted overlay. */
+    val overlayBlocked = MutableStateFlow(false)
+
     /** True once the creator's identity code has been verified on this install. */
     val creatorVerified = MutableStateFlow(false)
     val enrolling = MutableStateFlow(false)

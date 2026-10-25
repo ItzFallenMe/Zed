@@ -16,23 +16,25 @@ class ZedPrefs(context: Context) {
         get() = sp.getString(KEY_API_KEY, "") ?: ""
         set(value) = sp.edit().putString(KEY_API_KEY, value.trim()).apply()
 
-    /** Groq key. Powers fast text reasoning and decides which tools to run. */
-    var groqKey: String
-        get() = sp.getString(KEY_GROQ_KEY, "") ?: ""
-        set(value) = sp.edit().putString(KEY_GROQ_KEY, value.trim()).apply()
-
-    var groqModel: String
-        get() = sp.getString(KEY_GROQ_MODEL, DEFAULT_GROQ_MODEL) ?: DEFAULT_GROQ_MODEL
-        set(value) = sp.edit()
-            .putString(KEY_GROQ_MODEL, value.trim().ifBlank { DEFAULT_GROQ_MODEL })
-            .apply()
-
     var model: String
         get() = sp.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
         set(value) = sp.edit().putString(KEY_MODEL, value.trim().ifBlank { DEFAULT_MODEL }).apply()
 
+    /** Gemini text model used for typed chat, tool calls and memory summaries. */
+    var textModel: String
+        get() {
+            val stored = (sp.getString(KEY_TEXT_MODEL, DEFAULT_TEXT_MODEL) ?: DEFAULT_TEXT_MODEL)
+                .trim()
+                .ifBlank { DEFAULT_TEXT_MODEL }
+            return stored
+        }
+        set(value) = sp.edit()
+            .putString(KEY_TEXT_MODEL, value.trim().ifBlank { DEFAULT_TEXT_MODEL })
+            .apply()
+
+    /** One Google AI Studio key powers the voice, the brain and the embeddings. */
     var keysConfigured: Boolean
-        get() = apiKey.isNotBlank() && groqKey.isNotBlank()
+        get() = apiKey.isNotBlank()
         set(value) = sp.edit().putBoolean(KEY_KEYS_CONFIGURED, value).apply()
 
     var wakeEnabled: Boolean
@@ -136,11 +138,10 @@ class ZedPrefs(context: Context) {
     companion object {
         const val NAME = "zed_prefs"
         const val DEFAULT_MODEL = "gemini-2.0-flash-live-001"
-        const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+        const val DEFAULT_TEXT_MODEL = "gemini-3.5-flash-lite"
 
         private const val KEY_API_KEY = "api_key"
-        private const val KEY_GROQ_KEY = "groq_key"
-        private const val KEY_GROQ_MODEL = "groq_model"
+        private const val KEY_TEXT_MODEL = "text_model"
         private const val KEY_KEYS_CONFIGURED = "keys_configured"
         private const val KEY_MODEL = "model"
         private const val KEY_WAKE_ENABLED = "wake_enabled"

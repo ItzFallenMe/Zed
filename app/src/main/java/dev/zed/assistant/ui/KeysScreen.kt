@@ -72,7 +72,6 @@ fun KeysScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     var gemini by remember { mutableStateOf(prefs.apiKey) }
-    var groq by remember { mutableStateOf(prefs.groqKey) }
     var name by remember { mutableStateOf(prefs.userName) }
     var showHelp by remember { mutableStateOf(false) }
     var entered by remember { mutableStateOf(false) }
@@ -84,7 +83,7 @@ fun KeysScreen(
         label = "rise"
     )
 
-    val ready = gemini.isNotBlank() && groq.isNotBlank()
+    val ready = gemini.isNotBlank()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -120,37 +119,28 @@ fun KeysScreen(
             )
 
             Spacer(modifier = Modifier.height(22.dp))
-            SectionTitle("Two free keys, both needed")
+            SectionTitle("One free Google key")
             Text(
-                text = "Gemini is the ears and voice. Groq is the quick thinking. Both have free " +
-                    "tiers and both stay on this phone.",
+                text = "Gemini is the ears, the voice and the thinking. A single Google AI " +
+                    "Studio key runs all of it, has a free tier, and never leaves this phone " +
+                    "except to Google.",
                 style = MaterialTheme.typography.bodySmall,
                 color = ZedMuted
             )
 
             Spacer(modifier = Modifier.height(14.dp))
             KeyCard(
-                title = "Gemini",
-                subtitle = "Realtime voice + screen understanding",
+                title = "Gemini API key",
+                subtitle = "Realtime voice, screen understanding and thinking",
                 value = gemini,
                 onValueChange = { gemini = it },
                 linkLabel = "aistudio.google.com/apikey"
             ) { uriHandler.openUri("https://aistudio.google.com/apikey") }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            KeyCard(
-                title = "Groq",
-                subtitle = "Fast replies and multi-step actions",
-                value = groq,
-                onValueChange = { groq = it },
-                linkLabel = "console.groq.com/keys"
-            ) { uriHandler.openUri("https://console.groq.com/keys") }
-
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = {
                     prefs.apiKey = gemini
-                    prefs.groqKey = groq
                     prefs.userName = name
                     prefs.keysConfigured = ready
                     onDone()
@@ -166,7 +156,7 @@ fun KeysScreen(
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
                 Text(
-                    text = if (ready) "Continue" else "Add both keys to continue",
+                    text = if (ready) "Continue" else "Add your key to continue",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -178,7 +168,7 @@ fun KeysScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Where do I get them?",
+                        text = "Where do I get it?",
                         style = MaterialTheme.typography.labelMedium,
                         color = ZedMuted
                     )
@@ -202,12 +192,8 @@ fun KeysScreen(
                     )
                     HelpLine(
                         "2",
-                        "Open console.groq.com/keys, sign in and create a key. It starts with " +
-                            "gsk_."
-                    )
-                    HelpLine(
-                        "3",
-                        "Paste both above. You can change them later in Settings."
+                        "Paste it above. It starts with AIza and stays in this app's private " +
+                            "storage; you can change it later in Settings."
                     )
                 }
             }

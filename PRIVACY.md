@@ -23,14 +23,13 @@ Zed is built so the private parts stay local.
 
 ## What touches the network
 
-Two providers, each with a key you supply, and only while you are using the feature:
+One provider, with a key you supply, and only while you are using the feature:
 
-- **Gemini** (`generativelanguage.googleapis.com`) — realtime voice and vision. While a
+- **Gemini Live** (`generativelanguage.googleapis.com`) — realtime voice and vision. While a
   conversation is open, microphone audio is streamed to Google, and if screen awareness is on, a
   low-resolution frame roughly every second while you talk. Closing the conversation stops both.
-- **Groq** (`api.groq.com`) — text reasoning for typed messages and multi-step actions, and the
-  conversation summaries that become long-term memory. Sends the recent conversation text and
-  tool results.
+- **Gemini text** — reasoning for typed messages, multi-step tool calls, and the conversation
+  summaries that become long-term memory. Sends the recent conversation text and tool results.
 - **Gemini embeddings** (`text-embedding-004`) — turns memory items and search queries into
   vectors so recall is semantic. Sends only the memory text or the query, never audio.
 

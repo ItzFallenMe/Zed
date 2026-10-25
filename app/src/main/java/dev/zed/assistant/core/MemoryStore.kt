@@ -98,15 +98,13 @@ class MemoryStore(
      */
     suspend fun ingest(
         messages: List<Pair<String, String>>,
-        groqKey: String,
-        groqModel: String,
         geminiKey: String
     ): Int {
         if (messages.size < 4) return 0
         val transcript = messages.joinToString("\n") { (role, text) ->
             "${if (role == "user") "User" else "Zed"}: $text"
         }
-        val summarizer = MemorySummarizer(groqKey, groqModel, geminiKey)
+        val summarizer = MemorySummarizer(geminiKey)
         val summary = summarizer.summarize(transcript)
         var stored = 0
 

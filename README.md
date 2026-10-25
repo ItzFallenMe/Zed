@@ -28,6 +28,19 @@ GitHub Actions workflow in this repository.
 - Sideload only — Zed is not on the Play Store
 - Installing it over Play Protect is explained in [INSTALL.md](INSTALL.md)
 
+## What changed in 1.1.1
+
+- **One key, one brain.** Groq is gone. Its free tier retired the model Zed shipped with and
+  every request came back as "my connection just dropped". Gemini now does the thinking too,
+  on the same Google AI Studio key as the voice, with a fallback chain across current model
+  names. Existing installs keep working — the old key is simply ignored.
+- **Waking Zed is quiet.** The bare wake word is no longer treated as a request, a silence
+  window stops the reflexive "Yes sir?" greeting, and the prompt forbids sir/ma'am entirely.
+- **The floating menu tells you why it is missing.** If "Display over other apps" is off, Zed
+  says so in chat and the home screen offers a one-tap button to grant it.
+- **Real error messages** instead of a fake network apology: a rejected key, an unknown model
+  and rate limits each say what they are.
+
 ## What changed in 1.1.0
 
 - **The microphone no longer flickers.** The wake-word loop is now a single-flight state
@@ -57,11 +70,10 @@ Zed asks for two free keys before anything else, because both halves of its brai
 
 | Key | What it powers | Where to get it |
 |---|---|---|
-| **Gemini** | realtime voice, hearing and seeing | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| **Groq** | fast replies, multi-step actions when you type | [console.groq.com/keys](https://console.groq.com/keys) |
+| **Gemini** | realtime voice, hearing, seeing and thinking | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 
-Both have free tiers, both keys stay in the app's private storage, and neither is ever sent
-anywhere except to its own provider. Then grant the capabilities you actually want.
+One key, free tier. It stays in the app's private storage and is never sent anywhere except to
+Google. Then grant the capabilities you actually want.
 
 ## The interaction model
 
@@ -71,7 +83,7 @@ anywhere except to its own provider. Then grant the capabilities you actually wa
   and four one-tap actions (torch, guard, screen, app) — and folds away when you are done.
   There is no app to open and no screen to navigate. Drag it anywhere.
 - Talk naturally, or type. Spoken input goes to Gemini Live (streaming audio both ways, with
-  tool calls). Typed input goes to Groq, which can chain several phone actions in one go.
+  tool calls). Typed input goes to Gemini, which can chain several phone actions in one go.
 - **One consent** for screen capture, then Zed sees what you see for the rest of the session —
   no "share this app" picker, no repeated dialogs.
 - Zed **knows your voice** once you teach it: four seconds of speech is enough to greet you by
@@ -143,8 +155,8 @@ anywhere except to its own provider. Then grant the capabilities you actually wa
 
 ## Free only
 
-No paid service anywhere. Gemini Live runs on the free Gemini tier with your own key, Groq on its
-free tier, and OCR, translation, voiceprints, wake word and speech synthesis run on-device with
+No paid service anywhere. Gemini Live and the Gemini text brain run on the free tier with your
+own key, and OCR, translation, voiceprints, wake word and speech synthesis run on-device with
 free Android and ML Kit components.
 
 ## What is honestly limited by Android
@@ -194,7 +206,7 @@ MainActivity / Compose UI     ui/         glass chat, keys onboarding, setup, se
 FloatingAssistant             ui/         the overlay that unfolds on wake
 Glass / BackdropGlass         ui/         real backdrop blur for the header and composer
 MemoryStore                   core/       episodes, facts, semantic recall
-MemorySummarizer              core/       Groq/Gemini conversation summaries
+MemorySummarizer              core/       Gemini conversation summaries
 TextEmbedder / GeminiEmbeddings core/      on-device and cloud memory vectors
 CreatorGate                   core/       local identity-code verification
 ZedCoreService                service/    wake word, live voice, routing, screen streaming
@@ -202,7 +214,7 @@ ZedAccessibilityService       access/     taps, swipes, typing, screen text
 ScreenCapture / ScreenStreamer vision/    MediaProjection and hands-free frame streaming
 OcrEngine / OnDeviceTranslator vision/    ML Kit text recognition and translation
 GeminiLiveClient              voice/      WebSocket audio, video frames, tool calls
-GroqBrain                     command/    OpenAI-style function calling for typed chat
+GeminiBrain                   command/    Gemini function calling for typed chat
 IntentParser / CommandExecutor command/   offline intents and tool execution
 Voiceprint / VoiceProfileStore voice/     on-device speaker recognition
 WhatsAppController            whatsapp/   chat automation
@@ -211,7 +223,7 @@ ZedNotificationListener       notify/     unread message reading
 MemoryStore                   core/       local long-term facts
 ```
 
-Flow: **"zed" → speech → (offline parser | Gemini Live tool call | Groq tool call) →
+Flow: **"zed" → speech → (offline parser | Gemini Live tool call | Gemini tool call) →
 CommandExecutor → device layer → spoken reply**, with the overlay reflecting every state.
 
 ## Privacy
@@ -219,7 +231,7 @@ CommandExecutor → device layer → spoken reply**, with the overlay reflecting
 - No accounts, no analytics, no telemetry, no servers owned by this project.
 - Conversations, screenshots, memories and voiceprints stay in app-private storage.
 - OCR, translation, voiceprints and wake-word detection run on device.
-- The only network traffic is Gemini and Groq, with your own keys, while you are talking.
+- The only network traffic is Google's Gemini API, with your own key, while you are talking.
 
 See [PRIVACY.md](PRIVACY.md) for detail.
 

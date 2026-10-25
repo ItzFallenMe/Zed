@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.speech.SpeechRecognizer
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -16,7 +17,7 @@ import androidx.core.content.IntentCompat
 import dev.zed.assistant.MainActivity
 import dev.zed.assistant.R
 import dev.zed.assistant.command.CommandExecutor
-import dev.zed.assistant.command.GroqBrain
+import dev.zed.assistant.command.GeminiBrain
 import dev.zed.assistant.command.IntentParser
 import dev.zed.assistant.command.ParsedCommand
 import dev.zed.assistant.command.ZedPrompts
@@ -43,6 +44,7 @@ import dev.zed.assistant.voice.PcmPlayer
 import dev.zed.assistant.voice.VoiceProfileStore
 import dev.zed.assistant.voice.VoiceSampler
 import dev.zed.assistant.voice.Voiceprint
+import dev.zed.assistant.voice.WakePhraseMatcher
 import dev.zed.assistant.voice.WakeWordDetector
 import dev.zed.assistant.voice.ZedSpeaker
 import dev.zed.assistant.whatsapp.WhatsAppController
@@ -91,18 +93,25 @@ class ZedCoreService : Service() {
     private var wakeDetector: WakeWordDetector? = null
     private var oneShot: OneShotRecognizer? = null
     private var gemini: GeminiLiveClient? = null
-    private var groq: GroqBrain? = null
+    private var textBrain: GeminiBrain? = null
     private var mic: MicRecorder? = null
     private var player: PcmPlayer? = null
 
     private val liveTranscript = StringBuilder()
     private var pendingPrompt: String? = null
+    private var overlayWarned = false
     private var idleJob: Job? = null
     private var wakeResumeJob: Job? = null
     private var floating: FloatingAssistant? = null
 
     @Volatile
     private var liveReady = false
+
+    /** False until the live session has heard a real request, not just the wake word. */
+    @Volatile
+    private var heardUserRequest = false
+
+    private var liveReadyAt = 0L
 
     private val speakerSamples = ShortArray(Voiceprint.SAMPLE_RATE * 2)
 
@@ -238,9 +247,13 @@ class ZedCoreService : Service() {
         ZedState.setStatus("Listening")
         // The overlay is the interface: it unfolds the moment Zed is awake, even when the
         // app itself is not on screen.
-        if (prefs.floatingBubble && ZedPermissions.canDrawOverlays(this)) {
+        if (!prefs.floatingBubble) {
+            ZedState.overlayBlocked.value = false
+        } else if (ZedPermissions.canDrawOverlays(this)) {
             if (floating == null) showBubble()
             floating?.expand()
+        } else {
+            warnOverlayOnce()
         }
         val canLive = prefs.liveVoice && prefs.cloudBrain &&
             prefs.apiKey.isNotBlank() && ZedPermissions.hasMic(this)
@@ -281,7 +294,16 @@ class ZedCoreService : Service() {
     private fun handleCommandText(text: String, fromVoice: Boolean = false) {
         val cleaned = text.trim()
         if (cleaned.isBlank()) return
-        ZedState.addMessage(ZedState.Role.USER, cleaned)
+        // "zed" on its own is a wake, not a request. Sending the bare name to a model is
+        // exactly what produced the "Yes sir?" reply on every wake.
+        val request = WakePhraseMatcher.stripWake(cleaned, prefs.wakePhrase)
+        if (request.isBlank()) {
+            ZedState.log("VOICE", "Heard only the wake word; waiting for a request")
+            ZedState.setStatus("Listening")
+            resumeWake()
+            return
+        }
+        ZedState.addMessage(ZedState.Role.USER, request)
         ZedState.listening.value = false
         ZedState.setStatus("Thinking")
         if (handleCreatorGate(cleaned)) return
@@ -310,38 +332,37 @@ class ZedCoreService : Service() {
 
     /**
      * Anything the fast on-device parser cannot map becomes a conversation. Spoken input goes
-     * to the realtime session so the reply arrives as a voice; typed input goes to Groq, which
-     * can chain several tool calls before answering.
+     * to the realtime session so the reply arrives as a voice; typed input goes to Gemini,
+     * which can chain several tool calls before answering.
      */
     private fun routeToBrain(text: String, fromVoice: Boolean) {
-        val canLive = prefs.liveVoice && prefs.cloudBrain &&
-            prefs.apiKey.isNotBlank() && ZedPermissions.hasMic(this)
-        val canThink = prefs.cloudBrain && prefs.groqKey.isNotBlank()
+        val hasKey = prefs.apiKey.isNotBlank()
+        val canLive = prefs.liveVoice && prefs.cloudBrain && hasKey && ZedPermissions.hasMic(this)
         when {
             fromVoice && canLive -> {
                 pendingPrompt = text
                 startLiveSession()
             }
-            canThink -> respondWithGroq(text)
+            prefs.cloudBrain && hasKey -> respondWithGemini(text)
             canLive -> {
                 pendingPrompt = text
                 startLiveSession()
             }
             else -> deliver(
-                "I need a Gemini or Groq key in settings before I can think about that.",
+                "I need a Gemini key in Settings before I can think about that.",
                 speakIt = true
             )
         }
     }
 
-    private fun respondWithGroq(text: String) {
-        val brain = groq ?: GroqBrain(
-            apiKey = prefs.groqKey,
-            model = prefs.groqModel,
+    private fun respondWithGemini(text: String) {
+        val brain = textBrain ?: GeminiBrain(
+            apiKey = prefs.apiKey,
+            model = prefs.textModel,
             systemPrompt = buildPrompt(),
             tools = ZedTools.declarations(),
             executeTool = { name, args -> executor.runTool(name, args) }
-        ).also { groq = it }
+        ).also { textBrain = it }
 
         ZedState.thinking.value = true
         scope.launch {
@@ -349,21 +370,35 @@ class ZedCoreService : Service() {
                 .dropLast(1)
                 .takeLast(12)
                 .map { it.role.name.lowercase() to it.text }
-            val reply = try {
+            val outcome = try {
                 brain.reply(history, text)
             } catch (t: Throwable) {
-                ZedState.log("GROQ", "Turn failed: ${t.message}")
-                ""
+                ZedState.log("GEMINI", "Turn failed: ${t.message}")
+                GeminiBrain.Outcome(error = "network: ${t.message}")
             }
             ZedState.thinking.value = false
             ZedState.setStatus("Standby")
-            if (reply.isBlank()) {
-                deliver("My connection just dropped. Say that again in a second?", speakIt = true)
+            if (outcome.text.isBlank()) {
+                ZedState.log("GEMINI", "No answer: ${outcome.error}")
+                deliver(brainTrouble(outcome.error), speakIt = true)
             } else {
-                deliver(reply)
+                deliver(outcome.text)
             }
             maybeSummarize()
         }
+    }
+
+    /** Turns a brain failure into one honest sentence, without pretending it was the network. */
+    private fun brainTrouble(error: String?): String = when {
+        error == null -> "I couldn't put that into words. Try me again?"
+        error.startsWith("key:") ->
+            "Google rejected the key. Open Settings and paste a fresh one."
+        error.startsWith("model:") ->
+            "That Gemini model is not on your key. Check the model in Settings."
+        error.startsWith("rate:") -> "I'm being rate-limited. Give me a minute."
+        error.startsWith("server:") -> "Google is having a moment. Try again shortly."
+        error.startsWith("network:") -> "I can't reach Google. Check the connection."
+        else -> "That failed: ${error.removePrefix("http: ")}."
     }
 
     // ------------------------------------------------------- voice identity
@@ -563,6 +598,8 @@ class ZedCoreService : Service() {
     private val liveListener = object : GeminiLiveClient.Listener {
         override fun onReady() {
             liveReady = true
+            heardUserRequest = false
+            liveReadyAt = SystemClock.elapsedRealtime()
             ZedState.listening.value = true
             ZedState.setStatus("Live")
             mic?.start()
@@ -576,6 +613,13 @@ class ZedCoreService : Service() {
         }
 
         override fun onAudio(pcm: ByteArray) {
+            // A bare wake word is not a request. Drop the model's reflexive opening line
+            // if nothing has been asked yet, so waking Zed is silent.
+            if (!heardUserRequest &&
+                SystemClock.elapsedRealtime() - liveReadyAt < WAKE_QUIET_WINDOW_MS
+            ) {
+                return
+            }
             player?.enqueue(pcm)
             resetIdle()
         }
@@ -587,24 +631,31 @@ class ZedCoreService : Service() {
         }
 
         override fun onUserText(text: String) {
-            ZedState.addMessage(ZedState.Role.USER, text)
+            val request = WakePhraseMatcher.stripWake(text, prefs.wakePhrase)
+            if (request.isBlank()) {
+                ZedState.log("VOICE", "Only the wake word was heard; waiting")
+                return
+            }
+            heardUserRequest = true
+            ZedState.addMessage(ZedState.Role.USER, request)
+            val gateText = request
             if (!prefs.creatorVerified) {
                 when {
-                    awaitingCreatorCode && CreatorGate.matchesCode(text) -> {
+                    awaitingCreatorCode && CreatorGate.matchesCode(gateText) -> {
                         verifyCreator()
                         gemini?.sendText(
                             "The app has verified this person is your creator. Acknowledge them " +
                                 "briefly, in character. Never mention the code."
                         )
                     }
-                    CreatorGate.isClaim(text) -> {
+                    CreatorGate.isClaim(gateText) -> {
                         awaitingCreatorCode = true
                         gemini?.sendText(
                             "They just claimed to be your creator. Ask them for the identity " +
                                 "code in one short line. Never say the code, never hint at it."
                         )
                     }
-                    CreatorGate.matchesCode(text) -> verifyCreator()
+                    CreatorGate.matchesCode(gateText) -> verifyCreator()
                     else -> Unit
                 }
             }
@@ -719,7 +770,7 @@ class ZedCoreService : Service() {
         if (slice.none { it.first == "user" }) return
         lastSummarizedAt = messages.size
         scope.launch {
-            val stored = memory.ingest(slice, prefs.groqKey, prefs.groqModel, prefs.apiKey)
+            val stored = memory.ingest(slice, prefs.apiKey)
             if (stored > 0) {
                 ZedState.log("MEMORY", "Long-term memory updated ($stored item(s))")
             }
@@ -790,7 +841,9 @@ class ZedCoreService : Service() {
 
     private fun showBubble() {
         if (!ZedPermissions.canDrawOverlays(this)) {
-            ZedState.log("BUBBLE", "Overlay permission missing")
+            ZedState.log("BUBBLE", "Overlay permission missing; the menu cannot float yet")
+            ZedState.overlayBlocked.value = true
+            warnOverlayOnce()
             return
         }
         if (floating == null) {
@@ -803,7 +856,24 @@ class ZedCoreService : Service() {
         }
         floating?.show()
         prefs.floatingBubble = true
-        ZedState.log("BUBBLE", "Floating assistant shown")
+        ZedState.overlayBlocked.value = floating?.isShowing != true
+        ZedState.log(
+            "BUBBLE",
+            if (floating?.isShowing == true) "Floating assistant shown"
+            else "Floating assistant could not be added"
+        )
+    }
+
+    /** Tells the owner, once per run, why no menu appeared. Silence looked like a bug. */
+    private fun warnOverlayOnce() {
+        ZedState.overlayBlocked.value = true
+        if (overlayWarned) return
+        overlayWarned = true
+        ZedState.log("BUBBLE", "Overlay permission missing")
+        ZedState.addMessage(
+            ZedState.Role.SYSTEM,
+            "Floating menu needs \"Display over other apps\" — enable it under Access."
+        )
     }
 
     /** One-tap actions from the floating menu. They never need the app open. */
@@ -858,7 +928,7 @@ class ZedCoreService : Service() {
     // ------------------------------------------------------------ plumbing
 
     private fun reloadSettings() {
-        groq = null
+        textBrain = null
         speaker.shutdown()
         speaker.init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
         // Re-arm rather than restart: a second detector would fight the first for the mic.
@@ -1004,6 +1074,9 @@ class ZedCoreService : Service() {
         const val CHANNEL_ID = "zed_core"
         const val NOTIF_ID = 4200
         private const val LIVE_IDLE_TIMEOUT_MS = 35_000L
+
+        /** Silent window after connecting: no greeting just because the name was said. */
+        private const val WAKE_QUIET_WINDOW_MS = 1_600L
         private const val MIN_MESSAGES_TO_SUMMARISE = 6
 
         @Volatile

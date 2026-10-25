@@ -94,7 +94,8 @@ fun HomeScreen(
     prefs: ZedPrefs,
     onOpenSettings: () -> Unit,
     onOpenSetup: () -> Unit,
-    onRequestProjection: () -> Unit
+    onRequestProjection: () -> Unit,
+    onRequestOverlay: () -> Unit
 ) {
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -291,6 +292,11 @@ fun HomeScreen(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        if (!ZedPermissions.canDrawOverlays(context)) {
+                            item {
+                                QuickAction("Enable floating menu") { onRequestOverlay() }
+                            }
+                        }
                         item { QuickAction("Torch") { ZedCoreService.sendCommand(context, "torch on") } }
                         item { QuickAction("Battery") { ZedCoreService.sendCommand(context, "battery") } }
                         item {

@@ -66,7 +66,6 @@ fun SettingsScreen(
     val memory = remember { MemoryStore(context) }
 
     var apiKey by remember { mutableStateOf(prefs.apiKey) }
-    var groqKey by remember { mutableStateOf(prefs.groqKey) }
     var userName by remember { mutableStateOf(prefs.userName) }
     var model by remember { mutableStateOf(prefs.model) }
     var wakePhrase by remember { mutableStateOf(prefs.wakePhrase) }
@@ -135,6 +134,7 @@ fun SettingsScreen(
                 onValueChange = {
                     apiKey = it
                     prefs.apiKey = it
+                    prefs.keysConfigured = it.isNotBlank()
                 },
                 label = { Text("Gemini API key") },
                 singleLine = true,
@@ -158,30 +158,6 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = ZedMuted
             )
-            DividerLine()
-            OutlinedTextField(
-                value = groqKey,
-                onValueChange = {
-                    groqKey = it
-                    prefs.groqKey = it
-                    prefs.keysConfigured = it.isNotBlank() && prefs.apiKey.isNotBlank()
-                },
-                label = { Text("Groq API key") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth()
-            )
-            TextButton(
-                onClick = { uriHandler.openUri("https://console.groq.com/keys") },
-                contentPadding = PaddingValues(vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Get a free Groq key",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ZedWhite
-                )
-            }
             DividerLine()
             OutlinedTextField(
                 value = userName,

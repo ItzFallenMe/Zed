@@ -13,11 +13,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Turns a finished conversation into long-term memory: one short episode plus the durable
- * facts worth keeping. Runs on Groq first (fast and free) and falls back to Gemini.
+ * facts worth keeping. Runs on the same Gemini key as everything else, newest model first.
  */
 class MemorySummarizer(
-    private val groqKey: String,
-    private val groqModel: String,
     private val geminiKey: String
 ) {
 
@@ -48,7 +46,7 @@ class MemorySummarizer(
             append(transcript.take(6000))
         }
 
-        val raw = callGroq(prompt) ?: callGemini(prompt) ?: return@withContext null
+        val raw = callGemini(prompt) ?: return@withContext null
         parse(raw)
     }
 
@@ -76,35 +74,15 @@ class MemorySummarizer(
         }
     }
 
-    private fun callGroq(prompt: String): String? {
-        if (groqKey.isBlank()) return null
-        val payload = JSONObject().apply {
-            put("model", groqModel)
-            put("temperature", 0.2)
-            put("max_tokens", 400)
-            put("response_format", JSONObject().put("type", "json_object"))
-            put(
-                "messages",
-                JSONArray()
-                    .put(JSONObject().put("role", "system").put("content", "Reply with JSON only."))
-                    .put(JSONObject().put("role", "user").put("content", prompt))
-            )
-        }
-        return post("https://api.groq.com/openai/v1/chat/completions", payload, groqKey)
-            ?.let { body ->
-                JSONObject(body).optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("message")
-                    ?.optString("content")
-            }
-    }
-
     private fun callGemini(prompt: String): String? {
         if (geminiKey.isBlank()) return null
         val payload = JSONObject().apply {
-            put("contents", JSONArray().put(
-                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-            ))
+            put(
+                "contents",
+                JSONArray().put(
+                    JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                )
+            )
             put(
                 "generationConfig",
                 JSONObject()
@@ -112,23 +90,25 @@ class MemorySummarizer(
                     .put("responseMimeType", "application/json")
             )
         }
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-            "gemini-2.0-flash:generateContent?key=$geminiKey"
-        return post(url, payload, null)?.let { body ->
-            JSONObject(body).optJSONArray("candidates")
+        for (model in MODELS) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+                "$model:generateContent?key=$geminiKey"
+            val body = post(url, payload) ?: continue
+            val text = JSONObject(body).optJSONArray("candidates")
                 ?.optJSONObject(0)
                 ?.optJSONObject("content")
                 ?.optJSONArray("parts")
                 ?.optJSONObject(0)
                 ?.optString("text")
+            if (!text.isNullOrBlank()) return text
         }
+        return null
     }
 
-    private fun post(url: String, payload: JSONObject, bearer: String?): String? {
+    private fun post(url: String, payload: JSONObject): String? {
         val builder = Request.Builder()
             .url(url)
             .post(payload.toString().toRequestBody(JSON))
-        if (bearer != null) builder.addHeader("Authorization", "Bearer $bearer")
         return try {
             client.newCall(builder.build()).execute().use { response ->
                 val body = response.body?.string().orEmpty()
@@ -147,5 +127,6 @@ class MemorySummarizer(
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
+        private val MODELS = listOf("gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash")
     }
 }

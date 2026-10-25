@@ -22,6 +22,7 @@ import dev.zed.assistant.command.ParsedCommand
 import dev.zed.assistant.command.ZedPrompts
 import dev.zed.assistant.command.ZedTools
 import dev.zed.assistant.core.CreatorGate
+import dev.zed.assistant.core.CrashLog
 import dev.zed.assistant.core.MemoryStore
 import dev.zed.assistant.core.ZedPermissions
 import dev.zed.assistant.core.ZedPrefs
@@ -30,6 +31,7 @@ import dev.zed.assistant.device.HardwareController
 import dev.zed.assistant.security.AntiTheftService
 import dev.zed.assistant.security.SirenPlayer
 import dev.zed.assistant.ui.FloatingAssistant
+import dev.zed.assistant.ui.OverlayAction
 import dev.zed.assistant.vision.OcrEngine
 import dev.zed.assistant.vision.OnDeviceTranslator
 import dev.zed.assistant.vision.ScreenCapture
@@ -44,6 +46,7 @@ import dev.zed.assistant.voice.Voiceprint
 import dev.zed.assistant.voice.WakeWordDetector
 import dev.zed.assistant.voice.ZedSpeaker
 import dev.zed.assistant.whatsapp.WhatsAppController
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,7 +63,17 @@ import org.json.JSONObject
  */
 class ZedCoreService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /**
+     * A failing background task must not take the process down: it is logged, and Zed keeps
+     * running. Uncaught coroutine exceptions on the main dispatcher are fatal otherwise.
+     */
+    private val exceptionHandler = CoroutineExceptionHandler { _, error ->
+        ZedState.log("SVC", "Background task failed: ${error.message}")
+    }
+
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler
+    )
 
     private lateinit var prefs: ZedPrefs
     private lateinit var hardware: HardwareController
@@ -85,6 +98,7 @@ class ZedCoreService : Service() {
     private val liveTranscript = StringBuilder()
     private var pendingPrompt: String? = null
     private var idleJob: Job? = null
+    private var wakeResumeJob: Job? = null
     private var floating: FloatingAssistant? = null
 
     @Volatile
@@ -144,14 +158,21 @@ class ZedCoreService : Service() {
             }
         )
         createChannel()
-        promoteToForeground()
+        if (!promoteToForeground()) {
+            // Never run un-promoted: the system kills such a service and blames the app.
+            ZedState.log("SVC", "Could not become a foreground service; stopping cleanly")
+            isRunning = false
+            stopSelf()
+            return
+        }
+        CrashLog.last(this)?.let { ZedState.log("CRASH", "Previous run ended with: $it") }
         ZedState.setStatus("Standby")
         ZedState.creatorVerified.value = prefs.creatorVerified
         ZedState.log("SVC", "Zed core online")
         if (ZedState.messages.value.isEmpty()) {
             ZedState.addMessage(
                 ZedState.Role.ZED,
-                "Systems online, sir. All subsystems standing by."
+                "Online. All systems up."
             )
         }
         hardware.batteryPercent()
@@ -205,6 +226,12 @@ class ZedCoreService : Service() {
             stopSpeaking()
             return
         }
+        // One session at a time. Repeated taps, a wake word and a bubble tap arriving
+        // together used to open several microphones and fight over the recogniser.
+        if (ZedState.listening.value) {
+            ZedState.log("VOICE", "Already listening; ignoring duplicate start")
+            return
+        }
         wakeDetector?.pause()
         oneShot?.cancel()
         ZedState.partialText.value = ""
@@ -226,7 +253,7 @@ class ZedCoreService : Service() {
 
     private fun startLocalListen() {
         if (!ZedPermissions.hasMic(this)) {
-            deliver("I need microphone permission, sir.", speakIt = false)
+            deliver("I need microphone permission for that.", speakIt = false)
             return
         }
         val recognizer = OneShotRecognizer(this).also { oneShot = it }
@@ -270,7 +297,7 @@ class ZedCoreService : Service() {
                 executor.execute(parsed)
             } catch (t: Throwable) {
                 ZedState.log("CMD", "Execution failed: ${t.message}")
-                "That action failed, sir."
+                "That action failed."
             }
             ZedState.setStatus("Standby")
             if (reply.isNotBlank()) {
@@ -387,6 +414,8 @@ class ZedCoreService : Service() {
         }
         ZedState.enrolling.value = true
         ZedState.setStatus("Learning your voice")
+        // The sample recorder needs the microphone to itself.
+        wakeDetector?.pause()
         scope.launch {
             val samples = withContext(Dispatchers.IO) { VoiceSampler.record(4000) }
             val stored = samples != null && samples.size > Voiceprint.SAMPLE_RATE / 2 &&
@@ -497,7 +526,7 @@ class ZedCoreService : Service() {
             return
         }
         if (!ZedPermissions.hasMic(this)) {
-            deliver("Microphone permission is required, sir.", speakIt = false)
+            deliver("Microphone permission is required for that.", speakIt = false)
             return
         }
         val client = GeminiLiveClient(
@@ -514,8 +543,15 @@ class ZedCoreService : Service() {
         speakerSampleCount = 0
         speakerChecked = false
         ZedState.speaker.value = prefs.lastSpeaker
-        player = PcmPlayer(24000).also { it.start() }
-        mic = MicRecorder(16000) { chunk ->
+        player = PcmPlayer(24000).also { pcm ->
+            pcm.onDrained = {
+                ZedState.speaking.value = false
+                if (gemini != null) ZedState.setStatus("Live")
+            }
+            pcm.start()
+        }
+        ZedState.speaking.value = false
+        mic = MicRecorder(this, 16000) { chunk ->
             client.sendAudio(chunk)
             collectVoiceSample(chunk)
         }
@@ -600,9 +636,23 @@ class ZedCoreService : Service() {
             ZedState.log("VOICE", "Live error: $message")
             if (!liveReady) {
                 closeLive()
-                deliver("Live connection failed, sir. Falling back to offline control.", speakIt = false)
+                deliver("Live connection failed. Falling back to offline control.", speakIt = false)
                 startLocalListen()
+            } else {
+                // The socket died mid-conversation. Close it and give the microphone back
+                // to the wake word instead of streaming into a dead connection.
+                closeLive()
             }
+        }
+
+        override fun onInterrupted() {
+            // Barge-in: drop the rest of the answer that is still queued.
+            player?.clear()
+            ZedState.speaking.value = false
+            liveTranscript.clear()
+            ZedState.partialText.value = ""
+            ZedState.setStatus("Live")
+            resetIdle()
         }
 
         override fun onClosed() {
@@ -695,6 +745,9 @@ class ZedCoreService : Service() {
                 context = this,
                 languageProvider = { prefs.language },
                 phraseProvider = { prefs.wakePhrase },
+                isBusy = {
+                    ZedState.speaking.value || ZedState.listening.value || gemini != null
+                },
                 onWake = { beginConversation() }
             )
         }
@@ -704,18 +757,32 @@ class ZedCoreService : Service() {
     private fun setWakeEnabled(enabled: Boolean) {
         prefs.wakeEnabled = enabled
         if (enabled) {
-            startWake()
+            if (wakeDetector?.isRunning == true) wakeDetector?.resume() else startWake()
         } else {
+            wakeResumeJob?.cancel()
             wakeDetector?.stop()
             ZedState.wakeActive.value = false
         }
     }
 
+    /**
+     * Hands the microphone back to the wake word, but only once Zed has actually stopped
+     * talking. Arming the recogniser while speech is still coming out of the speaker made
+     * Zed wake itself, answer itself, and flip the mic on and off forever.
+     */
     private fun resumeWake() {
         if (!prefs.wakeEnabled || gemini != null) return
-        scope.launch {
+        wakeResumeJob?.cancel()
+        wakeResumeJob = scope.launch {
+            var waited = 0L
+            while ((ZedState.speaking.value || ZedState.listening.value) && waited < 15_000L) {
+                delay(200)
+                waited += 200
+            }
             delay(450)
-            if (prefs.wakeEnabled && gemini == null) wakeDetector?.resume()
+            if (prefs.wakeEnabled && gemini == null && !ZedState.speaking.value) {
+                wakeDetector?.resume()
+            }
         }
     }
 
@@ -730,12 +797,45 @@ class ZedCoreService : Service() {
             floating = FloatingAssistant(
                 context = this,
                 onTap = { beginConversation() },
-                onStop = { stopSpeaking() }
+                onStop = { stopSpeaking() },
+                onAction = { action -> handleOverlayAction(action) }
             )
         }
         floating?.show()
         prefs.floatingBubble = true
         ZedState.log("BUBBLE", "Floating assistant shown")
+    }
+
+    /** One-tap actions from the floating menu. They never need the app open. */
+    private fun handleOverlayAction(action: OverlayAction) {
+        when (action) {
+            OverlayAction.TORCH -> {
+                val on = !hardware.torchState()
+                if (hardware.setTorch(on)) {
+                    prefs.flashlightOn = on
+                    ZedState.log("HUD", if (on) "Torch on" else "Torch off")
+                } else {
+                    ZedState.log("HUD", "No torch on this device")
+                }
+            }
+            OverlayAction.GUARD -> {
+                if (prefs.antiTheftArmed) {
+                    AntiTheftService.disarm(this)
+                    ZedState.log("HUD", "Guard disarmed")
+                } else {
+                    AntiTheftService.arm(this)
+                    ZedState.log("HUD", "Guard armed")
+                }
+            }
+            OverlayAction.SCREEN, OverlayAction.APP -> {
+                runCatching {
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    )
+                }.onFailure { ZedState.log("HUD", "Could not open the app: ${it.message}") }
+            }
+        }
     }
 
     private fun hideBubble() {
@@ -761,24 +861,35 @@ class ZedCoreService : Service() {
         groq = null
         speaker.shutdown()
         speaker.init(prefs.language, prefs.bestVoice, prefs.ttsVoiceName)
-        if (prefs.wakeEnabled) setWakeEnabled(true) else setWakeEnabled(false)
+        // Re-arm rather than restart: a second detector would fight the first for the mic.
+        setWakeEnabled(prefs.wakeEnabled)
         ZedState.log("SVC", "Settings reloaded")
     }
 
-    private fun promoteToForeground(withProjection: Boolean = false) {
+    private fun promoteToForeground(withProjection: Boolean = false): Boolean {
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification)
-            return
+            return runCatching { startForeground(NOTIF_ID, notification) }.isSuccess
         }
         var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         if (withProjection) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         try {
             startForeground(NOTIF_ID, notification, types)
+            return true
         } catch (t: Throwable) {
-            ZedState.log("SVC", "Foreground start fallback: ${t.message}")
-            runCatching { startForeground(NOTIF_ID, notification) }
+            ZedState.log("SVC", "Foreground start refused (${t.message}); retrying narrower")
         }
+        if (withProjection && runCatching {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            }.isSuccess
+        ) {
+            return true
+        }
+        return runCatching { startForeground(NOTIF_ID, notification) }.isSuccess
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)

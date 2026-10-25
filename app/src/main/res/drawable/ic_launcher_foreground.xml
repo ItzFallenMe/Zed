@@ -1,28 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Zed's launcher face: the same hand-drawn ball as the floating overlay, adapted from
+    bloub (github.com/jeremy-prt/bloub, MIT). White body, dark eyes, on the black canvas
+    that is the app's whole identity.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
     <path
-        android:fillColor="#35E6FF"
-        android:fillAlpha="0.12"
-        android:pathData="M54,22A32,32 0 1,0 54,86A32,32 0 1,0 54,22Z" />
+        android:fillColor="#F7F7F7"
+        android:pathData="M84,54 Q83.95,58.74 83.49,61.09 Q83.03,63.43 82.13,65.65 Q81.22,67.87 79.91,69.87 Q78.59,71.87 76.96,73.6 Q75.33,75.33 73.46,76.78 Q71.6,78.22 69.56,79.39 Q67.53,80.55 65.36,81.42 Q63.19,82.3 60.92,82.84 Q58.66,83.39 56.33,83.58 Q54,83.77 51.67,83.58 Q49.34,83.39 47.08,82.84 Q44.81,82.3 42.64,81.42 Q40.47,80.55 38.44,79.39 Q36.4,78.22 34.54,76.78 Q32.67,75.33 31.04,73.6 Q29.41,71.87 28.09,69.87 Q26.78,67.87 25.87,65.65 Q24.97,63.43 24.51,61.09 Q24.05,58.74 24.02,56.37 Q24,54 24.34,51.68 Q24.69,49.36 25.33,47.13 Q25.97,44.89 26.86,42.76 Q27.76,40.63 28.91,38.62 Q30.05,36.6 31.48,34.75 Q32.9,32.9 34.62,31.29 Q36.33,29.68 38.31,28.39 Q40.29,27.09 42.47,26.16 Q44.65,25.23 46.96,24.68 Q49.27,24.13 51.63,23.95 Q54,23.77 56.37,23.95 Q58.73,24.13 61.04,24.68 Q63.35,25.23 65.53,26.16 Q67.71,27.09 69.69,28.39 Q71.67,29.68 73.38,31.29 Q75.1,32.9 76.52,34.75 Q77.95,36.6 79.09,38.62 Q80.24,40.63 81.14,42.76 Q82.03,44.89 82.67,47.13 Q83.31,49.36 83.66,51.68 Q84,54 84,54 Z" />
+
     <path
-        android:strokeColor="#35E6FF"
-        android:strokeWidth="2.2"
-        android:pathData="M54,26A28,28 0 1,0 54,82A28,28 0 1,0 54,26Z" />
+        android:fillColor="#080808"
+        android:pathData="M39.3,51.75 a4.5,4.5 0 0,1 9,0 v4.5 a4.5,4.5 0 0,1 -9,0 Z" />
     <path
-        android:strokeColor="#35E6FF"
-        android:strokeWidth="3.2"
-        android:strokeLineCap="round"
-        android:pathData="M54,26 A28,28 0 0,1 76.7,38.3" />
-    <path
-        android:strokeColor="#FFC24B"
-        android:strokeWidth="2.4"
-        android:strokeLineCap="round"
-        android:pathData="M31.3,69.7 A28,28 0 0,1 31.3,38.3" />
-    <path
-        android:fillColor="#35E6FF"
-        android:pathData="M42,43h24v4.6l-15.1,12.8H66V66H42v-4.6l15.1,-12.8H42z" />
+        android:fillColor="#080808"
+        android:pathData="M59.7,51.75 a4.5,4.5 0 0,1 9,0 v4.5 a4.5,4.5 0 0,1 -9,0 Z" />
 </vector>

@@ -1,6 +1,9 @@
 package dev.zed.assistant.voice
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -17,6 +20,7 @@ import kotlin.concurrent.thread
  * Streams 16 kHz mono PCM16 from the microphone in 50 ms chunks.
  */
 class MicRecorder(
+    private val context: Context? = null,
     private val sampleRate: Int = 16000,
     private val onChunk: (ByteArray) -> Unit
 ) {
@@ -33,6 +37,15 @@ class MicRecorder(
     @SuppressLint("MissingPermission")
     fun start(): Boolean {
         if (running) return true
+        // Checked up front: constructing AudioRecord without the grant throws, and an
+        // exception on a worker thread takes the whole process down with it.
+        if (context != null &&
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            ZedState.log("MIC", "Microphone permission missing")
+            return false
+        }
         val minBuffer = AudioRecord.getMinBufferSize(
             sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
@@ -128,6 +141,10 @@ class PcmPlayer(
     @Volatile
     private var running = false
 
+    /** Called once the queued speech has finished, so the UI can leave SPEAKING. */
+    @Volatile
+    var onDrained: (() -> Unit)? = null
+
     fun start(): Boolean {
         if (running) return true
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -162,17 +179,30 @@ class PcmPlayer(
         running = true
         audioTrack.play()
         worker = thread(name = "zed-player", isDaemon = true) {
+            var idleSince = 0L
             while (running) {
                 val chunk = try {
-                    queue.take()
+                    queue.poll(120, java.util.concurrent.TimeUnit.MILLISECONDS)
                 } catch (t: InterruptedException) {
                     break
                 }
+                if (chunk == null) {
+                    // A short gap is normal while chunks stream in; a long one means done.
+                    val now = System.currentTimeMillis()
+                    if (idleSince == 0L) idleSince = now
+                    if (now - idleSince > 320L) {
+                        idleSince = 0L
+                        if (ZedState.speaking.value) onDrained?.invoke()
+                    }
+                    continue
+                }
+                idleSince = 0L
                 try {
                     audioTrack.write(chunk, 0, chunk.size)
                 } catch (t: Throwable) {
                     break
                 }
+                ZedState.speaking.value = queue.isNotEmpty()
             }
         }
         return true
@@ -182,6 +212,15 @@ class PcmPlayer(
         if (!running) start()
         ZedState.speaking.value = true
         queue.offer(pcm)
+    }
+
+    /** Barge-in: drop everything still queued so the new answer is not buried. */
+    fun clear() {
+        queue.clear()
+        runCatching { track?.pause() }
+        runCatching { track?.flush() }
+        runCatching { track?.play() }
+        ZedState.speaking.value = false
     }
 
     fun stop() {

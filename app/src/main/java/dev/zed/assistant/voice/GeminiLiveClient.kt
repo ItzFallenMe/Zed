@@ -35,6 +35,9 @@ class GeminiLiveClient(
         fun onToolCall(callId: String, name: String, args: JSONObject)
         fun onError(message: String)
         fun onClosed()
+
+        /** The model was cut off — usually because the user started speaking over it. */
+        fun onInterrupted() {}
     }
 
     private val client = OkHttpClient.Builder()
@@ -156,6 +159,10 @@ class GeminiLiveClient(
                 content.optJSONObject("inputTranscription")?.optString("text")
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { listener.onUserText(it) }
+                if (content.optBoolean("interrupted")) {
+                    ZedState.log("GEMINI", "Turn interrupted")
+                    listener.onInterrupted()
+                }
                 if (content.optBoolean("turnComplete")) listener.onTurnComplete()
             }
             frame.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { calls ->

@@ -12,7 +12,9 @@ object ZedState {
     data class Message(
         val role: Role,
         val text: String,
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
+        /** Stable identity for list keys: two identical lines are still two rows. */
+        val id: Long = NEXT_ID.incrementAndGet()
     )
 
     data class LogLine(
@@ -23,6 +25,8 @@ object ZedState {
 
     private const val MAX_MESSAGES = 250
     private const val MAX_LOGS = 250
+
+    private val NEXT_ID = java.util.concurrent.atomic.AtomicLong(0L)
 
     val listening = MutableStateFlow(false)
     val speaking = MutableStateFlow(false)

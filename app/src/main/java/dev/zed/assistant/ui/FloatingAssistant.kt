@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Movie
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
@@ -20,7 +19,6 @@ import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
-import dev.zed.assistant.R
 import dev.zed.assistant.core.ZedState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,22 +26,29 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.sin
+
+/** The quick actions on the floating menu. */
+enum class OverlayAction { TORCH, GUARD, SCREEN, APP }
 
 /**
- * Zed's floating presence, in the spirit of Gemini's live overlay: a small glass orb that
- * waits above every app, wakes on the voice, and unfolds into a live caption while Zed
- * talks. Tap to talk, tap while Zed is speaking to stop, drag to park it anywhere.
+ * Zed's floating presence.
+ *
+ * Collapsed it is just the living avatar — a small ball that breathes and blinks wherever you
+ * are. When the wake word (or the orb itself) starts a conversation it unfolds into a menu:
+ * what Zed is doing, what it heard, and four one-tap actions it can actually perform. Drag it
+ * anywhere; tap it to talk, or tap it while it is speaking to cut it off.
  */
 class FloatingAssistant(
     private val context: Context,
     private val onTap: () -> Unit,
-    private val onStop: () -> Unit
+    private val onStop: () -> Unit,
+    private val onAction: (OverlayAction) -> Unit = {}
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var scope = newScope()
     private var manager: WindowManager? = null
     private var card: ZedOverlayCard? = null
     private var params: WindowManager.LayoutParams? = null
@@ -52,11 +57,16 @@ class FloatingAssistant(
 
     val isShowing: Boolean get() = showing
 
+    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     fun show(expanded: Boolean = false) {
         if (showing) {
             if (expanded) expand() else collapse()
             return
         }
+        // hide() cancels the collectors' scope; rebuild it or the orb comes back mute.
+        if (!scope.isActive) scope = newScope()
+
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
             ?: return
         manager = windowManager
@@ -65,6 +75,7 @@ class FloatingAssistant(
             onTapAction = {
                 if (isSpeaking) onStop() else onTap()
             }
+            onActionSelected = { action -> onAction(action) }
             onSizeChangedAction = { width, height ->
                 params?.let { layout ->
                     layout.width = width
@@ -161,20 +172,23 @@ class FloatingAssistant(
             runCatching { windowManager.removeViewImmediate(view) }
         }
         card = null
+        params = null
         showing = false
         scope.cancel()
     }
 }
 
 /**
- * The overlay itself. Drawn by hand so the orb can morph into a caption card without any
- * layout pass fighting the animation: the window grows while the artwork scales with it.
+ * The overlay itself. Drawn by hand so the ball can grow into a menu without a layout pass
+ * fighting the animation: the window grows while the artwork scales with it.
  */
 @SuppressLint("ViewConstructor")
 private class ZedOverlayCard(context: Context) : FrameLayout(context) {
 
     var onTapAction: (() -> Unit)? = null
+    var onActionSelected: ((OverlayAction) -> Unit)? = null
     var onSizeChangedAction: ((Int, Int) -> Unit)? = null
+    var onDrag: ((Int, Int) -> Unit)? = null
 
     var statusText: String = "Zed"
         set(value) { field = value; postInvalidateOnAnimation() }
@@ -204,22 +218,23 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
         color = Color.argb(170, 255, 255, 255)
         textSize = 11.5f * density
     }
-    private val avatarPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(26, 255, 255, 255)
+    }
+    private val pillBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1f * density
+        color = Color.argb(60, 255, 255, 255)
+    }
+    private val pillTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(235, 255, 255, 255)
+        textSize = 11f * density
+        isFakeBoldText = true
+    }
     private val rect = RectF()
-
-    private val invert = android.graphics.ColorMatrixColorFilter(
-        android.graphics.ColorMatrix(
-            floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f,
-                0f, -1f, 0f, 0f, 255f,
-                0f, 0f, -1f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f
-            )
-        )
-    ).also { avatarPaint.colorFilter = it }
-
-    private val movies = mutableMapOf<Int, Movie?>()
+    private val pillRect = RectF()
+    private val pillRects = ArrayList<Pair<OverlayAction, RectF>>(4)
 
     init {
         setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -233,14 +248,14 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
         if (progress == target) return
         val start = progress
         val startAt = SystemClock.uptimeMillis()
-        val duration = 260f
+        val duration = 300f
         val runnable = object : Runnable {
             override fun run() {
                 val t = ((SystemClock.uptimeMillis() - startAt) / duration).coerceIn(0f, 1f)
                 val eased = DecelerateInterpolator(1.4f).getInterpolation(t)
                 progress = start + (target - start) * eased
-                val width = lerp((COLLAPSED_DP * density), (CARD_DP * density), progress).toInt()
-                val height = lerp((COLLAPSED_DP * density), (CARD_HEIGHT_DP * density), progress).toInt()
+                val width = lerp(COLLAPSED_DP * density, CARD_DP * density, progress).toInt()
+                val height = lerp(COLLAPSED_DP * density, CARD_HEIGHT_DP * density, progress).toInt()
                 onSizeChangedAction?.invoke(width, height)
                 postInvalidateOnAnimation()
                 if (t < 1f) postOnAnimation(this)
@@ -274,7 +289,6 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
         canvas.drawRoundRect(rect, radius, radius, paint)
         paint.shader = null
 
-        // Top highlight, the signature of a glass surface.
         paint.shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h * 0.6f,
             Color.argb(38, 255, 255, 255), Color.TRANSPARENT,
@@ -286,29 +300,37 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
 
         val active = isListening || isSpeaking || isThinking
         val time = SystemClock.uptimeMillis() / 1000f
-
-        // Breathing halo while live.
-        if (active && progress > 0.05f) {
-            val pulse = (sin(time * 2.6f) + 1f) / 2f
-            glowPaint.style = Paint.Style.STROKE
-            glowPaint.strokeWidth = 1.5f * density
-            glowPaint.color = Color.argb((40 + 70 * pulse).toInt(), 255, 255, 255)
-            val inset = 3f * density
-            rect.inset(inset, inset)
-            val glowRadius = radius - inset
-            canvas.drawRoundRect(rect, glowRadius, glowRadius, glowPaint)
-            rect.inset(-inset, -inset)
+        val mood = when {
+            isThinking -> BloubAvatar.Mood.THINKING
+            isSpeaking -> BloubAvatar.Mood.SPEAKING
+            isListening -> BloubAvatar.Mood.LISTENING
+            else -> BloubAvatar.Mood.IDLE
         }
 
-        val avatarSize = lerp(40f * density, 46f * density, progress)
-        val avatarLeft = lerp((w - avatarSize) / 2f, 13f * density, progress)
-        val avatarTop = (h - avatarSize) / 2f
+        val avatarRadius = lerp(24f * density, 25f * density, progress)
+        val avatarCx = lerp(w / 2f, 14f * density + avatarRadius, progress)
+        val avatarCy = lerp(h / 2f, 40f * density, progress)
 
-        drawAvatar(canvas, avatarLeft, avatarTop, avatarSize, active, time)
+        val haloAlpha = if (active) {
+            (26 + 34 * ((kotlin.math.sin(time * 2.6f) + 1f) / 2f)).toInt()
+        } else {
+            0
+        }
+        BloubAvatar.draw(
+            canvas = canvas,
+            cx = avatarCx,
+            cy = avatarCy,
+            radius = avatarRadius,
+            mood = mood,
+            time = time,
+            bodyColor = Color.WHITE,
+            eyeColor = Color.argb(255, 8, 8, 8),
+            haloColor = if (active) Color.argb(haloAlpha, 255, 255, 255) else Color.TRANSPARENT
+        )
 
-        if (progress > 0.35f) {
-            val alpha = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
-            val textLeft = avatarLeft + avatarSize + 12f * density
+        if (progress > 0.3f) {
+            val alpha = ((progress - 0.3f) / 0.7f).coerceIn(0f, 1f)
+            val textLeft = avatarCx + avatarRadius + 12f * density
             val textRight = w - 14f * density
             val textWidth = (textRight - textLeft).toInt()
             if (textWidth > 0) {
@@ -316,12 +338,12 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
                 textPaint.alpha = (255 * alpha).toInt()
                 textPaint.isFakeBoldText = true
                 canvas.save()
-                canvas.clipRect(textLeft, 0f, textRight, h)
+                canvas.clipRect(textLeft, 0f, textRight, h * 0.62f)
                 canvas.drawText(
                     TextUtils.ellipsize(title, textPaint, textWidth.toFloat(), TextUtils.TruncateAt.END)
                         .toString(),
                     textLeft,
-                    h / 2f - 2f * density,
+                    34f * density,
                     textPaint
                 )
                 textPaint.isFakeBoldText = false
@@ -343,71 +365,72 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
                     .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                     .build()
                 canvas.save()
-                canvas.translate(textLeft, h / 2f + 3f * density)
+                canvas.translate(textLeft, 39f * density)
                 layout.draw(canvas)
                 canvas.restore()
                 canvas.restore()
             }
         }
+
+        if (progress > 0.55f) {
+            drawActions(canvas, w, h, ((progress - 0.55f) / 0.45f).coerceIn(0f, 1f))
+        }
+
+        // Keep the ball alive: slow frames when parked, full rate while it has company.
+        if (isAttachedToWindow) {
+            postInvalidateDelayed(if (active || progress > 0.02f) 16L else 90L)
+        }
     }
 
-    private fun drawAvatar(
-        canvas: Canvas,
-        left: Float,
-        top: Float,
-        size: Float,
-        active: Boolean,
-        time: Float
-    ) {
-        val resources = context.resources
-        val id = when {
-            isThinking -> R.raw.zed_curious
-            isSpeaking -> R.raw.zed_happy
-            isListening -> R.raw.zed_attentive
-            active -> R.raw.zed_excited
-            else -> R.raw.zed_idle
+    private fun drawActions(canvas: Canvas, w: Float, h: Float, alpha: Float) {
+        val rects = actionRects(w, h)
+        pillRects.clear()
+        pillTextPaint.alpha = (255 * alpha).toInt()
+        rects.forEach { (action, box) ->
+            pillRects.add(action to RectF(box))
+            pillPaint.alpha = (22 * alpha).toInt()
+            pillBorderPaint.alpha = (60 * alpha).toInt()
+            canvas.drawRoundRect(box, box.height() / 2f, box.height() / 2f, pillPaint)
+            canvas.drawRoundRect(box, box.height() / 2f, box.height() / 2f, pillBorderPaint)
+            val label = actionLabel(action)
+            val textWidth = pillTextPaint.measureText(label)
+            canvas.drawText(
+                label,
+                box.centerX() - textWidth / 2f,
+                box.centerY() + pillTextPaint.textSize * 0.36f,
+                pillTextPaint
+            )
         }
-        val movie = movies.getOrPut(id) {
-            runCatching { resources.openRawResource(id).use { Movie.decodeStream(it) } }.getOrNull()
-        }
+    }
 
-        val bubble = RectF(left, top, left + size, top + size)
-        canvas.save()
-        canvas.clipPath(
-            android.graphics.Path().apply {
-                addRoundRect(bubble, size * 0.34f, size * 0.34f, android.graphics.Path.Direction.CW)
-            }
+    private fun actionRects(w: Float, h: Float): List<Pair<OverlayAction, RectF>> {
+        val actions = listOf(
+            OverlayAction.TORCH to "Torch",
+            OverlayAction.GUARD to "Guard",
+            OverlayAction.SCREEN to "Screen",
+            OverlayAction.APP to "App"
         )
-        paint.shader = null
-        paint.color = Color.BLACK
-        canvas.drawRect(bubble, paint)
-        if (movie != null) {
-            val ms = ((time * 1000).toInt()) % movie.duration().coerceAtLeast(1)
-            movie.setTime(ms)
-            canvas.save()
-            canvas.translate(left, top)
-            val scale = size / movie.width().coerceAtLeast(1)
-            canvas.scale(scale, scale)
-            movie.draw(canvas, 0f, 0f, avatarPaint)
-            canvas.restore()
-        } else {
-            textPaint.alpha = 255
-            textPaint.isFakeBoldText = true
-            textPaint.textSize = size * 0.45f
-            textPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText("Z", bubble.centerX(), bubble.centerY() + size * 0.16f, textPaint)
-            textPaint.textAlign = Paint.Align.LEFT
-            textPaint.isFakeBoldText = false
-            textPaint.textSize = 13f * density
+        val gap = 6f * density
+        val padding = 11f * density
+        val height = 25f * density
+        val top = h - height - 10f * density
+        var x = 14f * density
+        val out = ArrayList<Pair<OverlayAction, RectF>>(actions.size)
+        actions.forEach { (action, label) ->
+            val width = pillTextPaint.measureText(label) + padding * 2f
+            // Shrink the last pill rather than drawing outside the card.
+            val right = (x + width).coerceAtMost(w - 14f * density)
+            out += action to RectF(x, top, right, top + height)
+            x = right + gap
         }
-        canvas.restore()
+        return out
+    }
 
-        if (active) {
-            borderPaint.alpha = 120 + (100 * ((sin(time * 3f) + 1f) / 2f)).toInt()
-            postInvalidateOnAnimation()
-        } else {
-            borderPaint.alpha = 72
-        }
+    private fun actionLabel(action: OverlayAction): String = when (action) {
+        OverlayAction.TORCH -> "Torch"
+        OverlayAction.GUARD -> "Guard"
+        OverlayAction.SCREEN -> "Screen"
+        OverlayAction.APP -> "App"
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -419,35 +442,64 @@ private class ZedOverlayCard(context: Context) : FrameLayout(context) {
                 startX = (layoutParams as? WindowManager.LayoutParams)?.x ?: 0
                 startY = (layoutParams as? WindowManager.LayoutParams)?.y ?: 0
                 dragged = false
+                pressedAction = if (progress > 0.6f) {
+                    val local = localPoint(event)
+                    if (local != null) actionAt(local.first, local.second) else null
+                } else {
+                    null
+                }
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
-                if (abs(dx) > 8f * density || abs(dy) > 8f * density) dragged = true
+                if (abs(dx) > 8f * density || abs(dy) > 8f * density) {
+                    dragged = true
+                    pressedAction = null
+                }
                 if (dragged) onDrag?.invoke(startX + dx.toInt(), startY + dy.toInt())
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (!dragged) onTapAction?.invoke()
+                val action = pressedAction
+                pressedAction = null
+                if (!dragged) {
+                    if (action != null) {
+                        onActionSelected?.invoke(action)
+                    } else {
+                        onTapAction?.invoke()
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedAction = null
                 return true
             }
         }
         return super.onTouchEvent(event)
     }
 
-    var onDrag: ((Int, Int) -> Unit)? = null
+    private fun localPoint(event: MotionEvent): Pair<Float, Float>? {
+        // The window is not moved by the system during a drag here, so raw coordinates map
+        // onto the view once the window offset is removed.
+        val layout = layoutParams as? WindowManager.LayoutParams ?: return null
+        return (event.rawX - layout.x) to (event.rawY - layout.y)
+    }
+
+    private fun actionAt(x: Float, y: Float): OverlayAction? =
+        pillRects.firstOrNull { it.second.contains(x, y) }?.first
 
     private var downX = 0f
     private var downY = 0f
     private var startX = 0
     private var startY = 0
     private var dragged = false
+    private var pressedAction: OverlayAction? = null
 
     companion object {
         const val COLLAPSED_DP = 64f
-        const val CARD_DP = 300f
-        const val CARD_HEIGHT_DP = 78f
+        const val CARD_DP = 316f
+        const val CARD_HEIGHT_DP = 128f
     }
 }
-

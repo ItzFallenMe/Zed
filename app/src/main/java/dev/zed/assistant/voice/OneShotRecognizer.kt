@@ -123,7 +123,7 @@ class OneShotRecognizer(private val context: Context) {
     }
 
     private fun describeError(error: Int): String = when (error) {
-        SpeechRecognizer.ERROR_NO_MATCH -> "I did not catch that, sir."
+        SpeechRecognizer.ERROR_NO_MATCH -> "I didn't catch that."
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I heard nothing."
         SpeechRecognizer.ERROR_NETWORK,
         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition needs a network right now."

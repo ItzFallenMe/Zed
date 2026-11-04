@@ -200,8 +200,7 @@ fun ZedBottomDock(
           label = "Updates",
           icon = Icons.Rounded.NotificationsNone,
           selected = selectedTab == ZedTab.UPDATES,
-          onClick = { onTabSelected(ZedTab.UPDATES) },
-          showBadge = true
+          onClick = { onTabSelected(ZedTab.UPDATES) }
         )
       }
     }

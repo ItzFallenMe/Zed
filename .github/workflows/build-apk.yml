@@ -43,7 +43,15 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload unsigned release APK\n        if: github.event_name != 'pull_request'\n        uses: actions/upload-artifact@v4\n        with:\n          name: zed-release-unsigned-apk\n          path: app/build/outputs/apk/release/app-release-unsigned.apk\n          if-no-files-found: error\n\n      - name: Upload lint report
+      - name: Upload unsigned release APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zed-release-unsigned-apk
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+
+      - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4
         with:

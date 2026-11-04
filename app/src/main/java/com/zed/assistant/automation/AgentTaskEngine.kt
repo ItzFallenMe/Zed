@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A deliberately small, sequential task runner for multi-step phone requests.
@@ -38,13 +39,13 @@ object AgentTaskEngine {
 
   private val _progress = MutableStateFlow<Progress?>(null)
   val progress: StateFlow<Progress?> = _progress
-  val isRunning: Boolean get() = running
+  private val running = AtomicBoolean(false)
+  val isRunning: Boolean get() = running.get()
 
-  @Volatile private var running = false
   @Volatile private var cancelled = false
 
   fun cancel() {
-    if (running) cancelled = true
+    if (running.get()) cancelled = true
   }
 
   suspend fun run(
@@ -54,10 +55,9 @@ object AgentTaskEngine {
     onProgress: (String) -> Unit = {},
     onFrame: (ByteArray) -> Unit = {}
   ): JSONObject {
-    if (running) return failure(goal, "task_already_running")
     if (steps.isEmpty()) return failure(goal, "empty_task")
     if (steps.size > MAX_STEPS) return failure(goal, "too_many_steps")
-    running = true
+    if (!running.compareAndSet(false, true)) return failure(goal, "task_already_running")
     cancelled = false
     val results = JSONArray()
     var completed = 0
@@ -111,7 +111,7 @@ object AgentTaskEngine {
         .put("completedSteps", completed)
         .put("results", results)
     } finally {
-      running = false
+      running.set(false)
       _progress.value = null
     }
   }

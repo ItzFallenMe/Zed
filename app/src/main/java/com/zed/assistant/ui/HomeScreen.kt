@@ -1,11 +1,8 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-
 package com.zed.assistant.ui
 
-import androidx.compose.foundation.BorderStroke
+import android.content.Context
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,28 +13,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.automirrored.rounded.ScreenShare
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,176 +39,160 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.model.AssistantState
-import com.zed.assistant.ui.theme.Background
-import com.zed.assistant.ui.theme.Border
-import com.zed.assistant.ui.theme.Cards
-import com.zed.assistant.ui.theme.Hint
-import com.zed.assistant.ui.theme.PrimaryRed
-import com.zed.assistant.ui.theme.PrimaryText
-import com.zed.assistant.ui.theme.Purple
-import com.zed.assistant.ui.theme.Success
-import com.zed.assistant.ui.theme.Warning
+import com.zed.assistant.ui.components.GlassCard
+import com.zed.assistant.ui.components.GlassIconButton
+import com.zed.assistant.ui.components.LiquidBackground
+import com.zed.assistant.ui.components.StatusDot
+import com.zed.assistant.ui.components.ZedWordmark
+import com.zed.assistant.ui.theme.LocalZedPalette
 import com.zed.assistant.viewmodel.MainViewModel
+import java.util.Calendar
 
+/**
+ * Home screen in the reference liquid-glass layout: identity header, particle
+ * orb stage, live status, uplink card, and three quick actions.
+ */
 @Composable
 fun ZedHomeScreen(
   viewModel: MainViewModel,
   onChat: () -> Unit,
   onSettings: () -> Unit
 ) {
+  val context = LocalContext.current
+  val palette = LocalZedPalette.current
   val state by viewModel.state.collectAsStateWithLifecycle()
   val status by viewModel.status.collectAsStateWithLifecycle()
   val level by viewModel.level.collectAsStateWithLifecycle()
-  val userText by viewModel.userText.collectAsStateWithLifecycle()
-  val zedText by viewModel.zedText.collectAsStateWithLifecycle()
-  val actionNote by viewModel.actionNote.collectAsStateWithLifecycle()
   val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
   val isActive by viewModel.isActive.collectAsStateWithLifecycle()
   val turns by viewModel.chatTurns.collectAsStateWithLifecycle()
+  val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
   var showLanguageInfo by rememberSaveable { mutableStateOf(false) }
 
-  Box(
-    modifier = Modifier
-      .fillMaxSize()
-      .background(Background)
-      .semantics { contentDescription = "Zed home" }
-  ) {
-    AmbientGlow(modifier = Modifier.align(Alignment.TopEnd).offset(x = 110.dp, y = (-100).dp), color = Purple)
-    AmbientGlow(modifier = Modifier.align(Alignment.CenterStart).offset(x = (-130).dp, y = 50.dp), color = PrimaryRed)
-    AmbientGlow(modifier = Modifier.align(Alignment.BottomEnd).offset(x = 120.dp, y = 110.dp), color = Warning)
+  val prefs = remember {
+    context.getSharedPreferences(ZedEngine.PREFS, Context.MODE_PRIVATE)
+  }
+  val userName = prefs.getString(ZedEngine.KEY_USER_NAME, "").orEmpty()
+  val model = prefs.getString(ZedEngine.KEY_MODEL, ZedEngine.DEFAULT_MODEL)
+    .orEmpty()
+    .ifBlank { ZedEngine.DEFAULT_MODEL }
 
-    LazyColumn(
+  LiquidBackground {
+    Column(
       modifier = Modifier
         .fillMaxSize()
         .statusBarsPadding()
-        .navigationBarsPadding(),
-      contentPadding = PaddingValues(start = 18.dp, top = 14.dp, end = 18.dp, bottom = 118.dp),
-      verticalArrangement = Arrangement.spacedBy(14.dp)
+        .navigationBarsPadding()
+        .padding(start = 18.dp, top = 12.dp, end = 18.dp, bottom = 104.dp)
     ) {
-      item {
-        HomeHeader(state = state, onChat = onChat, onSettings = onSettings)
-      }
+      HomeHeader(
+        userName = userName,
+        onChat = onChat,
+        onSettings = onSettings
+      )
 
-      item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-          Box(
-            modifier = Modifier
-              .size(250.dp)
-              .combinedClickable(
-                onClick = { viewModel.toggleSession() },
-                onLongClick = { viewModel.interrupt() }
-              )
-              .semantics { contentDescription = "Tap or hold the Zed orb" },
-            contentAlignment = Alignment.Center
-          ) {
-            OrbAnimationView(state = state, level = level)
-          }
-          WaveformView(
-            level = level,
-            active = state == AssistantState.LISTENING || state == AssistantState.SPEAKING
-          )
-          Spacer(modifier = Modifier.height(8.dp))
-          StatusPill(state = state, status = status)
-          Text(
-            text = if (isActive) "Hold the orb or center button to interrupt" else "Tap the orb or center button to start",
-            color = Hint,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 5.dp)
-          )
-        }
-      }
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f)
+          .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        OrbHalo(modifier = Modifier.fillMaxSize())
+        ZedOrbView(
+          state = state,
+          level = level,
+          themeKey = themeMode.orbThemeKey,
+          onTap = { viewModel.toggleSession() },
+          onLongPress = { viewModel.interrupt() },
+          modifier = Modifier.fillMaxSize()
+        )
 
-      if (errorMessage != null) {
-        item {
-          ErrorCard(
+        if (errorMessage != null) {
+          LiveErrorOverlay(
             message = errorMessage.orEmpty(),
             onSettings = onSettings,
-            onDismiss = viewModel::dismissError
+            onDismiss = viewModel::dismissError,
+            modifier = Modifier
+              .align(Alignment.Center)
+              .padding(horizontal = 18.dp)
           )
         }
       }
 
-      if (userText.isNotBlank() || zedText.isNotBlank()) {
-        item { TranscriptCard(userText = userText, zedText = zedText) }
-      }
+      HomeStatus(
+        state = state,
+        status = status,
+        isActive = isActive
+      )
 
-      item {
-        LiveLinkCard(
-          state = state,
-          hasHistory = turns.isNotEmpty(),
-          onClick = if (state == AssistantState.ERROR) onSettings else { { viewModel.toggleSession() } }
+      Spacer(modifier = Modifier.height(14.dp))
+
+      LiveLinkCard(
+        state = state,
+        model = model,
+        turns = turns.size,
+        onClick = {
+          if (state == AssistantState.ERROR) onSettings else viewModel.toggleSession()
+        }
+      )
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
+      ) {
+        QuickActionCard(
+          icon = Icons.AutoMirrored.Rounded.VolumeUp,
+          title = "Speaker",
+          subtitle = "Tone test",
+          modifier = Modifier.weight(1f),
+          onClick = viewModel::testSpeaker
+        )
+        QuickActionCard(
+          icon = Icons.Rounded.Language,
+          title = "Language",
+          subtitle = "Auto detect",
+          modifier = Modifier.weight(1f),
+          onClick = { showLanguageInfo = true }
+        )
+        QuickActionCard(
+          icon = Icons.Rounded.ChatBubbleOutline,
+          title = "Conversation",
+          subtitle = if (turns.isEmpty()) "Type instead" else "${turns.size} turns",
+          modifier = Modifier.weight(1f),
+          onClick = onChat
         )
       }
 
-      item {
-        Text(
-          text = "QUICK ACTIONS",
-          color = Hint,
-          fontSize = 10.sp,
-          fontWeight = FontWeight.Bold,
-          letterSpacing = 1.8.sp
-        )
-      }
-
-      item {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-          QuickActionCard(
-            icon = Icons.AutoMirrored.Rounded.ScreenShare,
-            title = "Device actions",
-            subtitle = "Apps · calls · links",
-            modifier = Modifier.weight(1f),
-            onClick = onChat
-          )
-          QuickActionCard(
-            icon = Icons.AutoMirrored.Rounded.VolumeUp,
-            title = "Speaker",
-            subtitle = "Run a tone test",
-            modifier = Modifier.weight(1f),
-            onClick = { viewModel.testSpeaker() }
-          )
-          QuickActionCard(
-            icon = Icons.Rounded.Language,
-            title = "Language",
-            subtitle = "Auto detect",
-            modifier = Modifier.weight(1f),
-            onClick = { showLanguageInfo = true }
-          )
-        }
-      }
-
-      item {
-        if (actionNote != null) {
-          Text(
-            text = actionNote.orEmpty(),
-            color = Success,
-            fontSize = 11.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-          )
-        } else if (turns.isNotEmpty()) {
-          TextButton(onClick = onChat, modifier = Modifier.fillMaxWidth()) {
-            Text("Open conversation history", color = PrimaryRed)
-            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = PrimaryRed)
-          }
-        }
-      }
+      Text(
+        text = "Zed sends microphone audio only while a session is active.",
+        color = palette.textMuted,
+        fontSize = 9.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 10.dp)
+      )
     }
   }
 
   if (showLanguageInfo) {
-    InfoDialog(
+    ZedInfoDialog(
       title = "Automatic language detection",
       message = "Zed follows the language you speak and can switch between English, Hindi, Hinglish, Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada, Malayalam, Punjabi, Urdu, and other Gemini-supported languages.",
       onDismiss = { showLanguageInfo = false }
@@ -227,178 +201,343 @@ fun ZedHomeScreen(
 }
 
 @Composable
-private fun HomeHeader(state: AssistantState, onChat: () -> Unit, onSettings: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-    IconButton(onClick = onChat) {
-      Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Chat", tint = PrimaryText)
+private fun HomeHeader(
+  userName: String,
+  onChat: () -> Unit,
+  onSettings: () -> Unit
+) {
+  val palette = LocalZedPalette.current
+  val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+  val greeting = when (hour) {
+    in 4..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    in 17..21 -> "Good evening"
+    else -> "Welcome back"
+  }
+  Box(modifier = Modifier.fillMaxWidth()) {
+    GlassIconButton(
+      icon = Icons.Rounded.ChatBubbleOutline,
+      contentDescription = "Open conversation",
+      onClick = onChat,
+      modifier = Modifier.align(Alignment.CenterStart)
+    )
+    Column(
+      modifier = Modifier.align(Alignment.Center),
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      ZedWordmark()
+      Text(
+        text = if (userName.isBlank()) greeting else "$greeting, $userName",
+        color = palette.textSecondary,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(top = 1.dp)
+      )
     }
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-      Text("ZED", color = PrimaryRed, fontSize = 21.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
-      Text("PERSONAL AI COMPANION", color = Hint, fontSize = 8.sp, letterSpacing = 1.7.sp)
+    GlassIconButton(
+      icon = Icons.Rounded.Settings,
+      contentDescription = "Settings",
+      onClick = onSettings,
+      modifier = Modifier.align(Alignment.CenterEnd)
+    )
+  }
+}
+
+@Composable
+private fun OrbHalo(modifier: Modifier = Modifier) {
+  val palette = LocalZedPalette.current
+  Canvas(modifier = modifier) {
+    val radius = size.minDimension * 0.43f
+    val center = Offset(size.width / 2f, size.height / 2f)
+    drawCircle(
+      brush = Brush.radialGradient(
+        colors = listOf(palette.accent.copy(alpha = 0.16f), Color.Transparent),
+        center = center,
+        radius = radius * 1.18f
+      ),
+      radius = radius * 1.18f,
+      center = center
+    )
+    drawCircle(
+      color = palette.accent.copy(alpha = 0.18f),
+      radius = radius,
+      center = center,
+      style = Stroke(width = 1.dp.toPx())
+    )
+    drawCircle(
+      color = palette.accentSecondary.copy(alpha = 0.10f),
+      radius = radius * 1.12f,
+      center = center,
+      style = Stroke(width = 1.dp.toPx())
+    )
+  }
+}
+
+@Composable
+private fun HomeStatus(
+  state: AssistantState,
+  status: String,
+  isActive: Boolean
+) {
+  val palette = LocalZedPalette.current
+  val color = statusColor(state)
+  Column(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Row(
+      modifier = Modifier
+        .clip(RoundedCornerShape(50))
+        .background(palette.card.copy(alpha = 0.8f))
+        .padding(horizontal = 16.dp, vertical = 9.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      StatusDot(color = color)
+      Text(
+        text = statusLabel(state, status),
+        color = palette.textPrimary,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+        modifier = Modifier.padding(start = 8.dp)
+      )
     }
+    Text(
+      text = if (isActive) {
+        "Hold the orb or mic to interrupt"
+      } else {
+        "Tap the orb or mic to start"
+      },
+      color = palette.textMuted,
+      fontSize = 10.sp,
+      modifier = Modifier.padding(top = 6.dp)
+    )
+  }
+}
+
+@Composable
+private fun LiveLinkCard(
+  state: AssistantState,
+  model: String,
+  turns: Int,
+  onClick: () -> Unit
+) {
+  val palette = LocalZedPalette.current
+  GlassCard(
+    modifier = Modifier.fillMaxWidth(),
+    contentPadding = PaddingValues(15.dp),
+    onClick = onClick
+  ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Box(
         modifier = Modifier
-          .size(7.dp)
-          .clip(CircleShape)
-          .background(statusColor(state))
-      )
-      IconButton(onClick = onSettings) {
-        Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = PrimaryText)
-      }
-    }
-  }
-}
-
-@Composable
-private fun StatusPill(state: AssistantState, status: String) {
-  Surface(
-    color = Cards.copy(alpha = 0.92f),
-    shape = RoundedCornerShape(50),
-    border = BorderStroke(1.dp, statusColor(state).copy(alpha = 0.55f))
-  ) {
-    Row(
-      modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(statusColor(state)))
-      Spacer(modifier = Modifier.width(8.dp))
-      Text(
-        text = status.uppercase(),
-        color = PrimaryText,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.3.sp
-      )
-    }
-  }
-}
-
-@Composable
-private fun LiveLinkCard(state: AssistantState, hasHistory: Boolean, onClick: () -> Unit) {
-  val isReady = state != AssistantState.ERROR
-  Card(
-    onClick = onClick,
-    colors = CardDefaults.cardColors(containerColor = Cards.copy(alpha = 0.94f)),
-    border = BorderStroke(1.dp, if (isReady) Border else PrimaryRed.copy(alpha = 0.55f)),
-    shape = RoundedCornerShape(18.dp)
-  ) {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(15.dp),
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Box(
-        modifier = Modifier
-          .size(42.dp)
-          .clip(RoundedCornerShape(13.dp))
-          .background(Brush.linearGradient(listOf(PrimaryRed, Purple))),
+          .size(44.dp)
+          .clip(RoundedCornerShape(14.dp))
+          .background(Brush.linearGradient(listOf(palette.accent, palette.accentSecondary))),
         contentAlignment = Alignment.Center
       ) {
-        Icon(Icons.Rounded.Mic, contentDescription = null, tint = PrimaryText)
+        Icon(
+          imageVector = Icons.Rounded.Mic,
+          contentDescription = null,
+          tint = palette.specular,
+          modifier = Modifier.size(23.dp)
+        )
       }
-      Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-        Text("GEMINI LIVE LINK", color = PrimaryRed, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+      Column(
+        modifier = Modifier
+          .weight(1f)
+          .padding(horizontal = 12.dp)
+      ) {
         Text(
-          if (isReady) "Voice, typed chat, and safe device actions" else "Open Settings to repair the connection",
-          color = PrimaryText,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Medium,
+          text = "GEMINI LIVE UPLINK",
+          color = palette.accent,
+          fontSize = 9.sp,
+          fontWeight = FontWeight.Bold,
+          letterSpacing = 1.2.sp
+        )
+        Text(
+          text = model,
+          color = palette.textPrimary,
+          fontSize = 14.sp,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
           modifier = Modifier.padding(top = 3.dp)
         )
         Text(
-          if (hasHistory) "Conversation history is ready" else "No completed turns yet",
-          color = Hint,
+          text = when {
+            state == AssistantState.ERROR -> "Tap to repair the connection in Settings"
+            turns == 0 -> "Ready for your first conversation"
+            else -> "$turns completed ${if (turns == 1) "turn" else "turns"} in this session"
+          },
+          color = palette.textMuted,
           fontSize = 11.sp,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
           modifier = Modifier.padding(top = 2.dp)
         )
       }
-      Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, tint = Hint)
+      Icon(
+        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+        contentDescription = null,
+        tint = palette.textMuted,
+        modifier = Modifier.size(18.dp)
+      )
     }
   }
 }
 
 @Composable
 private fun QuickActionCard(
-  icon: ImageVector,
+  icon: androidx.compose.ui.graphics.vector.ImageVector,
   title: String,
   subtitle: String,
   modifier: Modifier = Modifier,
   onClick: () -> Unit
 ) {
-  Card(
-    onClick = onClick,
+  val palette = LocalZedPalette.current
+  GlassCard(
     modifier = modifier.height(92.dp),
-    colors = CardDefaults.cardColors(containerColor = Cards.copy(alpha = 0.9f)),
-    border = BorderStroke(1.dp, Border),
-    shape = RoundedCornerShape(16.dp)
+    shape = RoundedCornerShape(18.dp),
+    contentPadding = PaddingValues(11.dp),
+    onClick = onClick
   ) {
-    Column(modifier = Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.SpaceBetween) {
-      Icon(icon, contentDescription = null, tint = Purple, modifier = Modifier.size(20.dp))
-      Column {
-        Text(title, color = PrimaryText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(subtitle, color = Hint, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-      }
-    }
+    Icon(
+      imageVector = icon,
+      contentDescription = null,
+      tint = palette.accent,
+      modifier = Modifier.size(22.dp)
+    )
+    Spacer(modifier = Modifier.weight(1f))
+    Text(
+      text = title,
+      color = palette.textPrimary,
+      fontSize = 11.sp,
+      fontWeight = FontWeight.Bold,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis
+    )
+    Text(
+      text = subtitle,
+      color = palette.textMuted,
+      fontSize = 9.sp,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.padding(top = 1.dp)
+    )
   }
 }
 
 @Composable
-private fun ErrorCard(message: String, onSettings: () -> Unit, onDismiss: () -> Unit) {
-  Column(
-    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1B0A0E)).border(1.dp, PrimaryRed.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(14.dp)
+private fun LiveErrorOverlay(
+  message: String,
+  onSettings: () -> Unit,
+  onDismiss: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  val palette = LocalZedPalette.current
+  GlassCard(
+    modifier = modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(22.dp),
+    contentPadding = PaddingValues(18.dp)
   ) {
-    Text("CONNECTION NEEDS ATTENTION", color = PrimaryRed, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-    Text(message, color = PrimaryText, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
-    Row {
-      TextButton(onClick = onSettings, contentPadding = PaddingValues(horizontal = 3.dp)) { Text("Settings", color = PrimaryRed, fontSize = 11.sp) }
-      TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 3.dp)) { Text("Dismiss", color = Hint, fontSize = 11.sp) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Icon(
+        imageVector = Icons.Rounded.Settings,
+        contentDescription = null,
+        tint = palette.error,
+        modifier = Modifier.size(22.dp)
+      )
+      Text(
+        text = "CONNECTION NEEDS ATTENTION",
+        color = palette.error,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.1.sp,
+        modifier = Modifier
+          .weight(1f)
+          .padding(start = 9.dp)
+      )
+      GlassIconButton(
+        icon = Icons.Rounded.Close,
+        contentDescription = "Dismiss error",
+        onClick = onDismiss,
+        modifier = Modifier.size(36.dp)
+      )
+    }
+    Text(
+      text = message,
+      color = palette.textPrimary,
+      fontSize = 13.sp,
+      lineHeight = 19.sp,
+      modifier = Modifier.padding(top = 10.dp)
+    )
+    TextButton(
+      onClick = onSettings,
+      contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+      modifier = Modifier.padding(top = 4.dp)
+    ) {
+      Text(
+        text = "OPEN SETTINGS",
+        color = palette.accent,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp
+      )
     }
   }
 }
 
 @Composable
-private fun TranscriptCard(userText: String, zedText: String) {
-  Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Cards.copy(alpha = 0.9f)).border(1.dp, Border, RoundedCornerShape(18.dp)).padding(14.dp)) {
-    if (userText.isNotBlank()) {
-      Text("YOU", color = Hint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-      Text(userText, color = PrimaryText.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-    if (userText.isNotBlank() && zedText.isNotBlank()) Spacer(modifier = Modifier.height(8.dp))
-    if (zedText.isNotBlank()) {
-      Text("ZED", color = Purple, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-      Text(zedText, color = PrimaryText, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-    }
-  }
-}
-
-@Composable
-private fun AmbientGlow(modifier: Modifier, color: Color) {
-  Box(modifier = modifier.size(270.dp).clip(CircleShape).background(Brush.radialGradient(listOf(color.copy(alpha = 0.16f), Color.Transparent))))
-}
-
-@Composable
-private fun InfoDialog(title: String, message: String, onDismiss: () -> Unit) {
-  androidx.compose.material3.AlertDialog(
+fun ZedInfoDialog(
+  title: String,
+  message: String,
+  onDismiss: () -> Unit
+) {
+  val palette = LocalZedPalette.current
+  AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text(title, color = PrimaryText) },
-    text = { Text(message, color = Hint) },
-    confirmButton = { TextButton(onClick = onDismiss) { Text("Got it", color = PrimaryRed) } },
-    containerColor = Cards
+    title = {
+      Text(
+        text = title,
+        color = palette.textPrimary,
+        fontWeight = FontWeight.Bold
+      )
+    },
+    text = {
+      Text(
+        text = message,
+        color = palette.textSecondary,
+        fontSize = 13.sp,
+        lineHeight = 19.sp
+      )
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        Text("GOT IT", color = palette.accent, fontWeight = FontWeight.Bold)
+      }
+    },
+    containerColor = palette.card,
+    shape = RoundedCornerShape(22.dp)
   )
 }
 
-private fun statusColor(state: AssistantState): Color = when (state) {
-  AssistantState.LISTENING -> Success
-  AssistantState.SPEAKING -> Purple
-  AssistantState.CONNECTING -> Warning
-  AssistantState.ERROR -> PrimaryRed
-  AssistantState.IDLE -> Hint
+@Composable
+private fun statusColor(state: AssistantState): Color {
+  val palette = LocalZedPalette.current
+  return when (state) {
+    AssistantState.LISTENING -> palette.success
+    AssistantState.SPEAKING -> palette.accent
+    AssistantState.CONNECTING -> palette.warning
+    AssistantState.ERROR -> palette.error
+    AssistantState.IDLE -> palette.textMuted
+  }
 }
 
-private fun stateName(state: AssistantState): String = when (state) {
-  AssistantState.IDLE -> "READY"
-  AssistantState.CONNECTING -> "CONNECTING"
-  AssistantState.LISTENING -> "LISTENING"
-  AssistantState.SPEAKING -> "SPEAKING"
-  AssistantState.ERROR -> "ERROR"
-}
+private fun statusLabel(state: AssistantState, status: String): String = when (state) {
+  AssistantState.IDLE -> "TAP ORB TO START"
+  AssistantState.CONNECTING -> "CONNECTING…"
+  AssistantState.LISTENING -> "MIC ON · LISTENING…"
+  AssistantState.SPEAKING -> "ZED SPEAKING…"
+  AssistantState.ERROR -> "CONNECTION ERROR"
+}.ifBlank { status.uppercase() }

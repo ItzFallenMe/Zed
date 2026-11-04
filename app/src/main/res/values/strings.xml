@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Zed</string>
+    <string name="app_description">Native Android voice assistant powered by Gemini Live</string>
 </resources>

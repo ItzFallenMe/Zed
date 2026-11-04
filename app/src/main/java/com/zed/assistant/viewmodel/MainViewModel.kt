@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
+import com.zed.assistant.ui.theme.ZedThemeMode
+import com.zed.assistant.ui.theme.ZedThemeRepository
 import kotlinx.coroutines.flow.StateFlow
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -18,9 +20,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   val isActive: StateFlow<Boolean> = ZedEngine.isActive
   val level: StateFlow<Float> = ZedEngine.level
   val chatTurns: StateFlow<List<ChatMessage>> = ZedEngine.chatTurns
+  val themeMode: StateFlow<ZedThemeMode> = ZedThemeRepository.mode
 
   init {
     ZedEngine.initialize(application)
+    ZedThemeRepository.initialize(application)
   }
 
   fun toggleSession() {
@@ -51,5 +55,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
   fun clearConversation() {
     ZedEngine.clearConversation()
+  }
+
+  fun setThemeMode(mode: ZedThemeMode) {
+    ZedThemeRepository.set(getApplication(), mode)
   }
 }

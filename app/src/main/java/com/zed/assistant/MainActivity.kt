@@ -69,14 +69,7 @@ class MainActivity : ComponentActivity() {
     }
 
     setContent {
-      ZedTheme {
-        Surface(
-          modifier = Modifier.fillMaxSize(),
-          color = MaterialTheme.colorScheme.background
-        ) {
-          ZedApp(viewModel)
-        }
-      }
+      ZedRoot(viewModel)
     }
   }
 
@@ -87,6 +80,19 @@ class MainActivity : ComponentActivity() {
     PermissionGateway.attach(null)
     if (isFinishing) viewModel.stopSession()
     super.onDestroy()
+  }
+}
+
+@Composable
+private fun ZedRoot(viewModel: MainViewModel) {
+  val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+  ZedTheme(mode = themeMode) {
+    Surface(
+      modifier = Modifier.fillMaxSize(),
+      color = MaterialTheme.colorScheme.background
+    ) {
+      ZedApp(viewModel)
+    }
   }
 }
 
@@ -107,7 +113,10 @@ private fun ZedApp(viewModel: MainViewModel) {
         onChat = { selectedTabIndex = ZedTab.CHAT.ordinal },
         onSettings = { selectedTabIndex = ZedTab.SETTINGS.ordinal }
       )
-      ZedTab.CHAT -> ZedChatScreen(viewModel)
+      ZedTab.CHAT -> ZedChatScreen(
+        viewModel = viewModel,
+        onBack = { selectedTabIndex = ZedTab.HOME.ordinal }
+      )
       ZedTab.SETTINGS -> SettingsScreen(
         viewModel = viewModel,
         onBack = { selectedTabIndex = ZedTab.HOME.ordinal }

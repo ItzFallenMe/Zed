@@ -2,16 +2,16 @@
 
 package com.zed.assistant.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -28,14 +28,16 @@ import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -43,12 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zed.assistant.model.AssistantState
-import com.zed.assistant.ui.theme.Border
-import com.zed.assistant.ui.theme.Cards
-import com.zed.assistant.ui.theme.Hint
-import com.zed.assistant.ui.theme.PrimaryRed
-import com.zed.assistant.ui.theme.PrimaryText
-import com.zed.assistant.ui.theme.Purple
+import com.zed.assistant.ui.components.StatusDot
+import com.zed.assistant.ui.theme.LocalZedPalette
 
 enum class ZedTab {
   HOME,
@@ -65,6 +63,9 @@ fun ZedBottomDock(
   onMicClick: () -> Unit,
   onMicLongClick: () -> Unit
 ) {
+  val palette = LocalZedPalette.current
+  val dockShape = RoundedCornerShape(28.dp)
+
   Box(
     modifier = Modifier
       .fillMaxWidth()
@@ -72,55 +73,122 @@ fun ZedBottomDock(
       .padding(horizontal = 14.dp, vertical = 10.dp),
     contentAlignment = Alignment.BottomCenter
   ) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(74.dp)) {
-      drawArc(
-        color = PrimaryRed.copy(alpha = 0.5f),
-        startAngle = 200f,
-        sweepAngle = 140f,
-        useCenter = false,
-        topLeft = androidx.compose.ui.geometry.Offset(size.width * 0.32f, -18.dp.toPx()),
-        size = androidx.compose.ui.geometry.Size(size.width * 0.36f, 54.dp.toPx()),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+    Canvas(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(26.dp)
+        .offset(y = (-58).dp)
+    ) {
+      val path = Path().apply {
+        moveTo(size.width * 0.30f, size.height)
+        quadraticTo(
+          size.width * 0.50f,
+          (-14).dp.toPx(),
+          size.width * 0.70f,
+          size.height
+        )
+      }
+      drawPath(
+        path = path,
+        brush = Brush.horizontalGradient(
+          listOf(
+            palette.accent.copy(alpha = 0.05f),
+            palette.accent.copy(alpha = 0.55f),
+            palette.accentSecondary.copy(alpha = 0.45f),
+            palette.accent.copy(alpha = 0.05f)
+          )
+        ),
+        style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
       )
     }
-    Surface(
-      color = Cards.copy(alpha = 0.97f),
-      shape = RoundedCornerShape(28.dp),
-      border = BorderStroke(1.dp, Border),
-      shadowElevation = 12.dp
+
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(64.dp)
+        .shadow(18.dp, dockShape)
     ) {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .clip(dockShape)
+          .background(
+            Brush.verticalGradient(listOf(palette.dockStart, palette.dockEnd))
+          )
+          .border(1.dp, palette.dockBorder.copy(alpha = 0.9f), dockShape)
+      )
       Row(
-        modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 5.dp),
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(horizontal = 5.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
-        DockItem("Home", Icons.Rounded.Home, selectedTab == ZedTab.HOME) { onTabSelected(ZedTab.HOME) }
-        DockItem("Chat", Icons.Rounded.ChatBubbleOutline, selectedTab == ZedTab.CHAT) { onTabSelected(ZedTab.CHAT) }
+        DockItem(
+          label = "Home",
+          icon = Icons.Rounded.Home,
+          selected = selectedTab == ZedTab.HOME,
+          onClick = { onTabSelected(ZedTab.HOME) }
+        )
+        DockItem(
+          label = "Chat",
+          icon = Icons.Rounded.ChatBubbleOutline,
+          selected = selectedTab == ZedTab.CHAT,
+          onClick = { onTabSelected(ZedTab.CHAT) }
+        )
+
         Box(
           modifier = Modifier
             .weight(1f)
-            .size(64.dp)
-            .offset(y = (-13).dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(PrimaryRed, Purple)))
-            .combinedClickable(onClick = onMicClick, onLongClick = onMicLongClick)
-            .semantics {
-              contentDescription = if (state == AssistantState.IDLE) "Start voice" else "Stop voice"
-            },
+            .padding(horizontal = 2.dp),
           contentAlignment = Alignment.Center
         ) {
-          Icon(
-            imageVector = if (state == AssistantState.IDLE) Icons.Rounded.Mic else Icons.Rounded.Stop,
-            contentDescription = null,
-            tint = PrimaryText,
-            modifier = Modifier.size(28.dp)
-          )
+          Box(
+            modifier = Modifier
+              .size(58.dp)
+              .offset(y = (-13).dp)
+              .shadow(14.dp, CircleShape)
+              .clip(CircleShape)
+              .background(
+                Brush.linearGradient(
+                  listOf(palette.accent, palette.accentSecondary)
+                )
+              )
+              .combinedClickable(onClick = onMicClick, onLongClick = onMicLongClick)
+              .semantics {
+                contentDescription = if (state == AssistantState.IDLE || state == AssistantState.ERROR) {
+                  "Start voice session"
+                } else {
+                  "Stop voice session. Long press to interrupt."
+                }
+              },
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = if (state == AssistantState.IDLE || state == AssistantState.ERROR) {
+                Icons.Rounded.Mic
+              } else {
+                Icons.Rounded.Stop
+              },
+              contentDescription = null,
+              tint = palette.specular,
+              modifier = Modifier.size(28.dp)
+            )
+          }
         }
-        DockItem("Settings", Icons.Rounded.Settings, selectedTab == ZedTab.SETTINGS) {
-          onTabSelected(ZedTab.SETTINGS)
-        }
-        DockItem("Updates", Icons.Rounded.NotificationsNone, selectedTab == ZedTab.UPDATES) {
-          onTabSelected(ZedTab.UPDATES)
-        }
+
+        DockItem(
+          label = "Settings",
+          icon = Icons.Rounded.Settings,
+          selected = selectedTab == ZedTab.SETTINGS,
+          onClick = { onTabSelected(ZedTab.SETTINGS) }
+        )
+        DockItem(
+          label = "Updates",
+          icon = Icons.Rounded.NotificationsNone,
+          selected = selectedTab == ZedTab.UPDATES,
+          onClick = { onTabSelected(ZedTab.UPDATES) },
+          showBadge = true
+        )
       }
     }
   }
@@ -131,23 +199,41 @@ private fun RowScope.DockItem(
   label: String,
   icon: ImageVector,
   selected: Boolean,
-  onClick: () -> Unit
+  onClick: () -> Unit,
+  showBadge: Boolean = false
 ) {
+  val palette = LocalZedPalette.current
   Column(
     modifier = Modifier
       .weight(1f)
       .clip(RoundedCornerShape(18.dp))
       .combinedClickable(onClick = onClick, onLongClick = null)
-      .padding(vertical = 7.dp),
+      .padding(vertical = 6.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center
   ) {
-    Icon(icon, contentDescription = label, tint = if (selected) PrimaryText else Hint, modifier = Modifier.size(21.dp))
+    Box {
+      Icon(
+        imageVector = icon,
+        contentDescription = label,
+        tint = if (selected) palette.accent else palette.textMuted,
+        modifier = Modifier.size(21.dp)
+      )
+      if (showBadge) {
+        StatusDot(
+          color = palette.error,
+          size = 6,
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-1).dp)
+        )
+      }
+    }
     Text(
-      label,
-      color = if (selected) PrimaryText else Hint,
+      text = label,
+      color = if (selected) palette.accent else palette.textMuted,
       fontSize = 9.sp,
-      fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+      fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
       modifier = Modifier.padding(top = 3.dp)
     )
   }

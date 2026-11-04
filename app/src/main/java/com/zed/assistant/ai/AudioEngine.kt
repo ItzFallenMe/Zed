@@ -449,12 +449,26 @@ class AudioEngine(context: Context) {
       val track = ensureTrack(chunk.sampleRate)
       if (track == null) return
       try {
-        val written = track.write(chunk.data, 0, chunk.data.size)
-        if (written < 0) {
-          Log.e(TAG, "AudioTrack.write failed: $written")
-          onError?.invoke("Audio playback failed ($written)")
-          return
+        var offset = 0
+        while (offset < chunk.data.size && chunk.epoch == playbackEpoch) {
+          val written = track.write(
+            chunk.data,
+            offset,
+            chunk.data.size - offset,
+            AudioTrack.WRITE_BLOCKING
+          )
+          if (written < 0) {
+            Log.e(TAG, "AudioTrack.write failed: $written")
+            onError?.invoke("Audio playback failed ($written)")
+            return
+          }
+          if (written == 0) {
+            Log.w(TAG, "AudioTrack accepted zero bytes; dropping the remainder of this chunk")
+            return
+          }
+          offset += written
         }
+        if (offset == 0 || chunk.epoch != playbackEpoch) return
         if (!playbackActive) {
           playbackActive = true
           idleNotified = false

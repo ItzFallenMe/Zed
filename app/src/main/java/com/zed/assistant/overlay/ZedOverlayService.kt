@@ -85,7 +85,9 @@ class ZedOverlayService : android.app.Service() {
   private fun attach() {
     if (attached) return
     val preferences = ZedPreferences(this)
-    val sizeDp = if (preferences.overlayToy == ROBOT) 172 else 118
+    // All skins currently fall back to the 172dp bundled robot renderer.
+    // Keep the window large enough for that renderer even if another skin is selected.
+    val sizeDp = 172
 
     val container = FrameLayout(this).apply {
       setBackgroundColor(Color.TRANSPARENT)

@@ -20,59 +20,59 @@ object ZedVoiceProfiles {
   val ALL = listOf(
     ZedVoiceProfile(
       id = "prime",
-      label = "Zed Prime",
+      label = "Female · Aoede",
       geminiVoice = "Aoede",
-      description = "Signature Zed. Warm, sharp, quietly amused.",
-      style = "Speak with relaxed confidence and a small, knowing smile. Short, clean sentences."
+      description = "Female-sounding voice · clear and warm.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "ev",
-      label = "E.V. Mode",
+      label = "Female · Kore",
       geminiVoice = "Kore",
-      description = "E.V.-inspired partner. Dry, close, protective.",
-      style = "Sound like a trusted partner in the room: dry, intimate, protective, and a little exasperated when the plan is stupid. Never syrupy."
+      description = "Female-sounding voice · steady and direct.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "spark",
-      label = "Spark",
+      label = "Male · Puck",
       geminiVoice = "Puck",
-      description = "Bright and quick. Best for banter and ideas.",
-      style = "Bring bright, fast energy. Punchy lines, playful reactions, no rambling."
+      description = "Male-sounding voice · bright and quick.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "gravel",
-      label = "Gravel",
+      label = "Male · Charon",
       geminiVoice = "Charon",
-      description = "Low and deadpan. Every line lands dry.",
-      style = "Use a low, deadpan delivery. Understatement over enthusiasm, with a razor-thin hint of humour."
+      description = "Male-sounding voice · low and measured.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "sentinel",
-      label = "Sentinel",
+      label = "Male · Fenrir",
       geminiVoice = "Fenrir",
-      description = "Deep and steady. Calm in a crisis.",
-      style = "Sound steady, grounded and quietly formidable. Fewer words, more weight."
+      description = "Male-sounding voice · deep and steady.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "velvet",
-      label = "Velvet",
+      label = "Female · Leda",
       geminiVoice = "Leda",
-      description = "Smooth and unhurried. Late-night company.",
-      style = "Speak smoothly and unhurried, with warm restraint and space between thoughts."
+      description = "Female-sounding voice · smooth and soft.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "anchor",
-      label = "Anchor",
+      label = "Male · Orus",
       geminiVoice = "Orus",
-      description = "Reassuring and clear. The practical one.",
-      style = "Be clear, reassuring and practical. Calm the room without sounding clinical."
+      description = "Male-sounding voice · clear and grounded.",
+      style = ""
     ),
     ZedVoiceProfile(
       id = "current",
-      label = "Current",
+      label = "Female · Zephyr",
       geminiVoice = "Zephyr",
-      description = "Airy and light. Quick, curious, nimble.",
-      style = "Keep the delivery airy and nimble, curious and lightly teasing, with quick turns."
+      description = "Female-sounding voice · airy and light.",
+      style = ""
     )
   )
 

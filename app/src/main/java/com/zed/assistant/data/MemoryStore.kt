@@ -40,7 +40,7 @@ class MemoryStore(context: Context) {
   fun search(query: String, limit: Int = 20): List<Memory> {
     val clean = query.trim()
     if (clean.isBlank()) return emptyList()
-    return query("%${clean.replace("%", "\\%")}%", limit)
+    return query("%${escapeLike(clean)}%", limit)
   }
 
   fun delete(id: Long): Boolean = runCatching {
@@ -50,8 +50,8 @@ class MemoryStore(context: Context) {
   fun deleteByKeyword(query: String): Int = runCatching {
     helper.writableDatabase.delete(
       ZedDatabase.TABLE_MEMORIES,
-      "text LIKE ?",
-      arrayOf("%${query.trim().replace("%", "\\%")}%")
+      "text LIKE ? ESCAPE '\\'",
+      arrayOf("%${escapeLike(query.trim())}%")
     )
   }.getOrDefault(0)
 
@@ -69,7 +69,7 @@ class MemoryStore(context: Context) {
     val (selection, args) = if (selectionArg == null) {
       null to null
     } else {
-      "text LIKE ?" to arrayOf(selectionArg)
+      "text LIKE ? ESCAPE '\\'" to arrayOf(selectionArg)
     }
     runCatching {
       helper.readableDatabase.query(
@@ -96,6 +96,10 @@ class MemoryStore(context: Context) {
     }.onFailure { Log.e(TAG, "Could not read memories", it) }
     return result
   }
+
+  /** Escape SQL LIKE metacharacters so a keyword is always treated literally. */
+  private fun escapeLike(value: String): String =
+    value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
   private fun categorize(text: String): String {
     val lower = text.lowercase(Locale.ROOT)

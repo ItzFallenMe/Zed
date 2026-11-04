@@ -9,6 +9,17 @@ val geminiApiKey = (project.findProperty("GEMINI_API_KEY") as String?)
     ?: System.getenv("GEMINI_API_KEY")
     ?: ""
 
+// Release signing is opt-in and never committed. Maintainers provide these
+// through the local shell, Gradle user properties, or CI secrets.
+val releaseStorePath = (project.findProperty("ZED_RELEASE_STORE_FILE") as String?)
+    ?: System.getenv("ZED_RELEASE_STORE_FILE")
+val releaseStorePassword = (project.findProperty("ZED_RELEASE_STORE_PASSWORD") as String?)
+    ?: System.getenv("ZED_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = (project.findProperty("ZED_RELEASE_KEY_ALIAS") as String?)
+    ?: System.getenv("ZED_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = (project.findProperty("ZED_RELEASE_KEY_PASSWORD") as String?)
+    ?: System.getenv("ZED_RELEASE_KEY_PASSWORD")
+
 android {
   namespace = "com.zed.assistant"
   compileSdk = 36
@@ -17,8 +28,8 @@ android {
     applicationId = "com.zed.assistant"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.1.0"
 
     buildConfigField(
       "String",
@@ -27,9 +38,24 @@ android {
     )
   }
 
+  signingConfigs {
+    if (releaseStorePath != null && releaseStorePassword != null &&
+      releaseKeyAlias != null && releaseKeyPassword != null
+    ) {
+      create("release") {
+        storeFile = file(releaseStorePath)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
+    }
+  }
+
   buildTypes {
     release {
-      isMinifyEnabled = false
+      signingConfig = signingConfigs.findByName("release")
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }

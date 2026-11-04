@@ -2,6 +2,7 @@ package com.zed.assistant.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.zed.assistant.ai.PermissionGateway
 import com.zed.assistant.audio.SpeakerVerifier
+import com.zed.assistant.automation.ZedAccessibilityService
 import com.zed.assistant.audio.VoiceCapture
 import com.zed.assistant.audio.VoskModelManager
 import com.zed.assistant.data.Memory
@@ -517,14 +519,8 @@ private fun granted(context: Context, permission: String): Boolean =
   ContextCompat.checkSelfPermission(context, permission) ==
     android.content.pm.PackageManager.PERMISSION_GRANTED
 
-private fun accessibilityEnabled(context: Context): Boolean {
-  val enabled = Settings.Secure.getString(
-    context.contentResolver,
-    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-  ).orEmpty()
-  return enabled.contains("${context.packageName}/.automation.ZedAccessibilityService") ||
-    enabled.contains("${context.packageName}/com.zed.assistant.automation.ZedAccessibilityService")
-}
+private fun accessibilityEnabled(context: Context): Boolean =
+  ZedAccessibilityService.isEnabledInSettings(context)
 
 private fun toyLabel(toy: String): String = when (toy) {
   "robot-head" -> "Robot head (primary)"

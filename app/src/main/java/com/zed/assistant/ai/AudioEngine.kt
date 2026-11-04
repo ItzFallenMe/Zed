@@ -161,6 +161,10 @@ class AudioEngine(context: Context) {
   fun startRecording(): Boolean {
     if (recordJob?.isActive == true) return true
 
+    // A previous read loop may have exited on an AudioRecord error without
+    // going through stopRecording(). Release that stale recorder before retry.
+    if (audioRecord != null) stopRecording()
+
     if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) !=
       PackageManager.PERMISSION_GRANTED
     ) {
@@ -218,6 +222,9 @@ class AudioEngine(context: Context) {
           Log.e(TAG, "Microphone read error: $read")
           onError?.invoke("Microphone read error")
           break
+        } else {
+          // Avoid spinning a CPU core if the platform temporarily has no samples.
+          delay(5)
         }
       }
       Log.d(TAG, "Microphone loop stopped")

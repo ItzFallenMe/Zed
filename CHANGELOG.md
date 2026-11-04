@@ -10,6 +10,15 @@ one continuous line rather than a jump from 1.1.0 to 2.0.0.
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-11-04
+
+### Fixed
+
+- Floating avatar now falls back to the locally bundled robot renderer for skins that still depend on a blocked remote React import.
+- Accessibility settings detection now parses Android's enabled service component entries instead of relying on fragile string fragments.
+- Device actions now distinguish an enabled accessibility permission whose service is not yet connected from a disabled permission.
+- Bottom navigation is explicitly anchored to the bottom center of the app window while respecting system navigation insets.
+
 ## [2.1.2] - 2026-11-04
 
 ### Changed

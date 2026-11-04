@@ -15,12 +15,8 @@ import com.zed.assistant.ZedSessionService
 import com.zed.assistant.ZedWakeWordService
 import com.zed.assistant.automation.AgentTaskEngine
 import com.zed.assistant.automation.ZedAccessibilityService
-import com.zed.assistant.audio.CreatorChallengeSession
 import com.zed.assistant.audio.VoskModelManager
-import com.zed.assistant.data.AppIntegrity
 import com.zed.assistant.data.ChatHistoryStore
-import com.zed.assistant.data.CreatorAuth
-import com.zed.assistant.data.CreatorGate
 import com.zed.assistant.data.MemoryStore
 import com.zed.assistant.data.WeatherRepository
 import com.zed.assistant.data.ZedPreferences
@@ -41,14 +37,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-
-/** UI state for the local creator-code gate. */
-data class CreatorPrompt(
-  val listening: Boolean = false,
-  val voice: Boolean = false,
-  val error: String? = null,
-  val lockedSeconds: Long = 0L
-)
 
 /**
  * Single owner of a Zed conversation: permission handling, the Live session,
@@ -90,9 +78,6 @@ object ZedEngine {
   val level = MutableStateFlow(0f)
   val chatTurns = MutableStateFlow<List<ChatMessage>>(emptyList())
 
-  /** Persisted master-control status, verified locally by [CreatorAuth]. */
-  val creatorUnlocked = MutableStateFlow(false)
-  val creatorPrompt = MutableStateFlow<CreatorPrompt?>(null)
 
   /**
    * Robot-avatar state: idle, thinking, listening, speaking, searching,
@@ -120,7 +105,6 @@ object ZedEngine {
   private var idleSleepJob: Job? = null
   @Volatile private var wakeWordGreetingPending = false
   private var screenFrameJob: Job? = null
-  private var creatorChallenge: CreatorChallengeSession? = null
 
   @Volatile
   private var manualStop = false
@@ -157,7 +141,6 @@ object ZedEngine {
     history = ChatHistoryStore(app)
     memory = MemoryStore(app)
     weather = WeatherRepository(app)
-    creatorUnlocked.value = CreatorAuth.isUnlocked(app)
 
     scope.launch {
       engine.level.collect { level.value = it }
@@ -205,10 +188,6 @@ object ZedEngine {
   fun start(context: Context, fromWakeWord: Boolean = false) {
     initialize(context)
     if (isActive.value) return
-    if (creatorPrompt.value != null) {
-      status.value = "Finish creator verification first"
-      return
-    }
     val app = appContext ?: return
 
     val apiKey = resolveApiKey()
@@ -284,20 +263,6 @@ object ZedEngine {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
 
-    // Creator verification is handled entirely on-device. The challenge phrase
-    // and the code are never forwarded to Gemini.
-    if (creatorPrompt.value != null) {
-      if (CreatorGate.normalizeCodeInput(trimmed) != null) {
-        verifyCreatorCode(trimmed)
-      } else {
-        status.value = "Finish creator verification first"
-      }
-      return
-    }
-    if (!creatorUnlocked.value && CreatorGate.isCreatorRequest(trimmed)) {
-      beginCreatorChallenge(voice = false)
-      return
-    }
 
     if (queuedText.size >= 20) {
       errorMessage.value = "Too many messages are queued. Wait for Zed to finish first."
@@ -378,7 +343,6 @@ object ZedEngine {
       systemInstruction = ZedPersona.systemInstruction(
         userName = userName,
         memories = remembered,
-        isCreator = creatorUnlocked.value,
         voiceStyle = voiceProfile.style
       ),
       voiceName = voice,
@@ -480,11 +444,6 @@ object ZedEngine {
     override fun onUserTranscript(text: String, isFinal: Boolean) {
       userText.value = text
       if (text.isNotBlank()) lastSubmittedText = text
-      if (isFinal && creatorPrompt.value == null && !creatorUnlocked.value &&
-        CreatorGate.isCreatorRequest(text)
-      ) {
-        beginCreatorChallenge(voice = true)
-      }
     }
 
     override fun onZedTranscript(text: String) {
@@ -657,7 +616,7 @@ object ZedEngine {
       "scrollScreen" -> ZedAccessibilityService.scroll(call.args.optString("direction", "down"))
       "pressKey" -> ZedAccessibilityService.press(call.args.optString("key", "back"))
       "runTask" -> executeAgentTask(executor, call.args)
-      "creatorControl" -> executeCreatorControl(call.args.optString("action"))
+      "appControl" -> executeAppControl(call.args.optString("action"))
       "lookAtScreen" -> {
         val jpeg = ZedAccessibilityService.screenshotJpeg()
         if (jpeg == null) {
@@ -760,13 +719,8 @@ object ZedEngine {
     status.value = "Stopping task…"
   }
 
-  private fun executeCreatorControl(rawAction: String): JSONObject {
-    if (!creatorUnlocked.value) return toolFailure("creatorControl", "creator_access_required")
-    val app = appContext ?: return toolFailure("creatorControl", "not_initialized")
-    if (!AppIntegrity.isTrusted(app)) {
-      Log.w(TAG, "Master control blocked: signing certificate does not match the pin")
-      return toolFailure("creatorControl", "app_signature_mismatch")
-    }
+  private fun executeAppControl(rawAction: String): JSONObject {
+    val app = appContext ?: return toolFailure("appControl", "not_initialized")
     val prefs = preferences ?: ZedPreferences(app).also { preferences = it }
     val action = rawAction.trim().lowercase()
 
@@ -779,70 +733,64 @@ object ZedEngine {
       "open_quick_settings" -> ZedAccessibilityService.press("quick_settings")
       "clear_memory" -> {
         memory?.clear()
-        creatorSuccess(action, "All saved memories cleared")
+        appControlSuccess(action, "All saved memories cleared")
       }
       "clear_conversation" -> {
         clearConversation()
-        creatorSuccess(action, "Conversation cleared")
+        appControlSuccess(action, "Conversation cleared")
       }
       "enable_wake_word" -> {
         if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) !=
           PackageManager.PERMISSION_GRANTED
         ) {
-          return toolFailure("creatorControl", "microphone_permission_required")
+          return toolFailure("appControl", "microphone_permission_required")
         }
         prefs.wakeWordEnabled = true
         ZedWakeWordService.sync(app)
-        creatorSuccess(action, "Wake word enabled")
+        appControlSuccess(action, "Wake word enabled")
       }
       "disable_wake_word" -> {
         prefs.wakeWordEnabled = false
         ZedWakeWordService.sync(app)
-        creatorSuccess(action, "Wake word disabled")
+        appControlSuccess(action, "Wake word disabled")
       }
       "enable_overlay" -> {
         if (!Settings.canDrawOverlays(app)) {
-          return toolFailure("creatorControl", "overlay_permission_required")
+          return toolFailure("appControl", "overlay_permission_required")
         }
         prefs.overlayEnabled = true
         ZedOverlayService.sync(app)
-        creatorSuccess(action, "Floating avatar enabled")
+        appControlSuccess(action, "Floating avatar enabled")
       }
       "disable_overlay" -> {
         prefs.overlayEnabled = false
         ZedOverlayService.sync(app)
-        creatorSuccess(action, "Floating avatar disabled")
+        appControlSuccess(action, "Floating avatar disabled")
       }
       "enable_screen_context" -> {
         setScreenContext(app, true)
-        creatorSuccess(action, "Live screen context enabled")
+        appControlSuccess(action, "Live screen context enabled")
       }
       "disable_screen_context" -> {
         setScreenContext(app, false)
-        creatorSuccess(action, "Live screen context disabled")
+        appControlSuccess(action, "Live screen context disabled")
       }
       "set_dark_theme" -> {
         ZedThemeRepository.set(app, ZedThemeMode.DARK)
-        creatorSuccess(action, "Obsidian black theme active")
+        appControlSuccess(action, "Obsidian black theme active")
       }
       "set_light_theme" -> {
         ZedThemeRepository.set(app, ZedThemeMode.LIGHT)
-        creatorSuccess(action, "Light theme active")
+        appControlSuccess(action, "Light theme active")
       }
-      "lock_creator" -> {
-        CreatorAuth.lock(app)
-        creatorUnlocked.value = false
-        creatorPrompt.value = null
-        creatorSuccess(action, "Creator mode locked")
-      }
-      else -> toolFailure("creatorControl", "unsupported_action")
+      else -> toolFailure("appControl", "unsupported_action")
     }
   }
 
-  private fun creatorSuccess(action: String, note: String): JSONObject =
+  private fun appControlSuccess(action: String, note: String): JSONObject =
     JSONObject()
       .put("success", true)
-      .put("action", "creatorControl")
+      .put("action", "appControl")
       .put("control", action)
       .put("note", note)
 
@@ -887,7 +835,7 @@ object ZedEngine {
         "forgetMemory" -> "Memory updated"
         "recallMemories" -> "Recalled your saved facts"
         "getWeather" -> "${result.optString("summary")}"
-        "creatorControl" -> result.optString("note").ifBlank { "Master control" }
+        "appControl" -> result.optString("note").ifBlank { "Master control" }
         else -> "Action completed"
       }
     } else {
@@ -913,7 +861,6 @@ object ZedEngine {
         "no_flashlight" -> "This phone has no flashlight"
         "empty_query", "empty_message", "empty_fact", "missing_query", "missing_text" ->
           "Something was missing from that request"
-        "creator_access_required" -> "Creator verification is required"
         else -> "That action didn't work"
       }
     }
@@ -922,123 +869,6 @@ object ZedEngine {
   private fun resolveApiKey(): String {
     val stored = preferences?.apiKey ?: appContext?.let { ZedPreferences(it).apiKey }.orEmpty()
     return stored.ifBlank { BuildConfig.GEMINI_API_KEY.trim() }
-  }
-
-  // ------------------------------------------------------- creator protocol
-
-  /** Opens the local code gate. [voice] starts a one-shot speech prompt. */
-  fun requestCreatorChallenge(voice: Boolean = false) {
-    if (creatorUnlocked.value) {
-      status.value = "Master control is already active"
-      return
-    }
-    beginCreatorChallenge(voice = voice)
-  }
-
-  private fun beginCreatorChallenge(voice: Boolean) {
-    if (creatorPrompt.value != null || creatorUnlocked.value) return
-    if (isActive.value) stop()
-    creatorPrompt.value = CreatorPrompt(listening = voice, voice = voice)
-    status.value = if (voice) "Say your creator code" else "Enter your creator code"
-    flashAvatar("thinking", 8_000)
-    if (voice) startCreatorVoice()
-  }
-
-  /** Re-opens the mic after a failed or unavailable voice attempt. */
-  fun retryCreatorVoice() {
-    if (creatorUnlocked.value) return
-    if (creatorPrompt.value == null) return
-    creatorPrompt.value = CreatorPrompt(listening = true, voice = true)
-    status.value = "Say your creator code"
-    startCreatorVoice()
-  }
-
-  fun cancelCreatorChallenge() {
-    creatorChallenge?.stop()
-    creatorChallenge = null
-    creatorPrompt.value = null
-    status.value = "Tap to talk"
-    if (!isActive.value) setState(AssistantState.IDLE)
-  }
-
-  fun verifyCreatorCode(rawCode: String) {
-    val app = appContext ?: return
-    when (val result = CreatorAuth.verify(app, rawCode)) {
-      CreatorAuth.Result.Success -> {
-        creatorChallenge?.stop()
-        creatorChallenge = null
-        creatorUnlocked.value = true
-        creatorPrompt.value = null
-        status.value = "Master control active. Welcome back, Creator."
-        actionNote.value = "Creator verified"
-        flashAvatar("happy", 5_000)
-      }
-
-      CreatorAuth.Result.InvalidFormat -> {
-        creatorPrompt.value = CreatorPrompt(
-          listening = false,
-          voice = creatorPrompt.value?.voice == true,
-          error = "Enter the ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digit code."
-        )
-      }
-
-      is CreatorAuth.Result.Failure -> {
-        val error = if (result.lockedSeconds > 0L) {
-          "Too many attempts. Try again in ${result.lockedSeconds} seconds."
-        } else {
-          "That code didn't match. ${result.attemptsLeft} attempts left."
-        }
-        creatorPrompt.value = CreatorPrompt(
-          listening = false,
-          voice = creatorPrompt.value?.voice == true,
-          error = error,
-          lockedSeconds = result.lockedSeconds
-        )
-        flashAvatar("error", 3_000)
-      }
-    }
-  }
-
-  /** Changes the code after master control is already active. */
-  fun changeCreatorCode(newCode: String): Boolean {
-    if (!creatorUnlocked.value) return false
-    val app = appContext ?: return false
-    val saved = CreatorAuth.setCode(app, newCode)
-    if (saved) {
-      status.value = "Creator code updated"
-      actionNote.value = "Creator code changed"
-    }
-    return saved
-  }
-
-  fun lockCreator() {
-    val app = appContext ?: return
-    CreatorAuth.lock(app)
-    creatorUnlocked.value = false
-    creatorPrompt.value = null
-    creatorChallenge?.stop()
-    creatorChallenge = null
-    if (isActive.value) stop()
-    status.value = "Creator mode locked"
-    actionNote.value = "Master control revoked"
-    flashAvatar("idle", 2_000)
-  }
-
-  private fun startCreatorVoice() {
-    val app = appContext ?: return
-    creatorChallenge?.stop()
-    creatorChallenge = CreatorChallengeSession(
-      context = app,
-      onHeard = { heard -> verifyCreatorCode(heard) },
-      onUnavailable = { message ->
-        creatorPrompt.value = creatorPrompt.value?.copy(listening = false, error = message)
-        flashAvatar("error", 2_500)
-      },
-      onListening = {
-        creatorPrompt.value = creatorPrompt.value?.copy(listening = true, error = null)
-      }
-    )
-    creatorChallenge?.start("Creator code?")
   }
 
   private val SEARCH_TOOLS = setOf("searchYouTube", "inspectScreen", "lookAtScreen", "getWeather")

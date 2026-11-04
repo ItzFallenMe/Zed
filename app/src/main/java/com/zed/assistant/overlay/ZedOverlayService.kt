@@ -274,9 +274,13 @@ class ZedOverlayService : android.app.Service() {
     web.evaluateJavascript("window.setRobotState('$safeState');", null)
   }
 
-  private fun avatarUrl(toy: String): String =
-    if (toy == ROBOT) "file:///android_asset/robot-head/avatar.html"
-    else "file:///android_asset/overlay-toys/$toy.html"
+  private fun avatarUrl(toy: String): String {
+    // Alternate toy pages currently import React from esm.sh. Network loading is
+    // intentionally blocked in this WebView, so those pages only show an import
+    // error. Always use the bundled canvas renderer until skins bundle dependencies.
+    if (toy != ROBOT) Log.i(TAG, "Using offline robot renderer for toy: $toy")
+    return "file:///android_asset/robot-head/avatar.html"
+  }
 
   private fun detach() {
     if (!attached) return

@@ -100,7 +100,7 @@ fun ZedHomeScreen(
         .fillMaxSize()
         .statusBarsPadding()
         .navigationBarsPadding()
-        .padding(start = 18.dp, top = 12.dp, end = 18.dp, bottom = 104.dp)
+        .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 92.dp)
     ) {
       HomeHeader(
         userName = userName,
@@ -216,15 +216,21 @@ private fun HomeHeader(
     in 17..21 -> "Good evening"
     else -> "Welcome back"
   }
-  Box(modifier = Modifier.fillMaxWidth()) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween
+  ) {
     GlassIconButton(
       icon = Icons.Rounded.ChatBubbleOutline,
       contentDescription = "Open conversation",
       onClick = onChat,
-      modifier = Modifier.align(Alignment.CenterStart)
+      modifier = Modifier.size(42.dp)
     )
     Column(
-      modifier = Modifier.align(Alignment.Center),
+      modifier = Modifier
+        .weight(1f)
+        .padding(horizontal = 8.dp),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -233,25 +239,30 @@ private fun HomeHeader(
           contentDescription = null,
           contentScale = ContentScale.Crop,
           modifier = Modifier
-            .size(30.dp)
+            .size(27.dp)
             .clip(RoundedCornerShape(8.dp))
         )
-        Spacer(modifier = Modifier.size(8.dp))
-        ZedWordmark()
+        Spacer(modifier = Modifier.size(7.dp))
+        ZedWordmark(fontSize = 24, letterSpacing = 5)
       }
       Text(
         text = if (userName.isBlank()) greeting else "$greeting, $userName",
         color = palette.textSecondary,
-        fontSize = 12.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(top = 1.dp)
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 2.dp)
       )
     }
     GlassIconButton(
       icon = Icons.Rounded.Settings,
       contentDescription = "Settings",
       onClick = onSettings,
-      modifier = Modifier.align(Alignment.CenterEnd)
+      modifier = Modifier.size(42.dp)
     )
   }
 }
@@ -317,9 +328,9 @@ private fun HomeStatus(
     }
     Text(
       text = if (isActive) {
-        "Hold the orb or mic to interrupt"
+        "Hold the avatar or mic to interrupt"
       } else {
-        "Tap the orb or mic to start"
+        "Tap the avatar or mic to start"
       },
       color = palette.textMuted,
       fontSize = 10.sp,
@@ -410,7 +421,7 @@ private fun QuickActionCard(
 ) {
   val palette = LocalZedPalette.current
   GlassCard(
-    modifier = modifier.height(92.dp),
+    modifier = modifier.height(86.dp),
     shape = RoundedCornerShape(18.dp),
     contentPadding = PaddingValues(11.dp),
     onClick = onClick

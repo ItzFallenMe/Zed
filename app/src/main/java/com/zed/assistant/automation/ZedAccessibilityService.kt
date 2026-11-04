@@ -1,6 +1,9 @@
 package com.zed.assistant.automation
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
+import android.content.Context
+import android.provider.Settings
 import android.accessibilityservice.GestureDescription
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -418,6 +421,24 @@ class ZedAccessibilityService : AccessibilityService() {
       private set
 
     fun isConnected(): Boolean = instance != null
+
+    fun isEnabledInSettings(context: Context): Boolean {
+      val enabled = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+      ).orEmpty()
+      val service = ComponentName(context, ZedAccessibilityService::class.java)
+      return enabled.split(':').any { entry ->
+        ComponentName.unflattenFromString(entry.trim()) == service
+      }
+    }
+
+    private fun unavailableError(context: Context?): String =
+      if (context != null && isEnabledInSettings(context)) {
+        "accessibility_service_not_connected"
+      } else {
+        "accessibility_service_disabled"
+      }
 
     fun screenSnapshot(): JSONObject = instance?.snapshot()
       ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")

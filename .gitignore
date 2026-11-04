@@ -1,15 +1,29 @@
-*.iml
-.gradle
-.kotlin
-/local.properties
-local.properties
-.idea/
-.DS_Store
+# Gradle
+.gradle/
+.kotlin/
 build/
 /app/build
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.DS_Store
 /captures
+
+# Local machine configuration
+local.properties
 .env
 debug.keystore
 *.jks
+*.keystore
+
+# Generated artifacts
+*.apk
+*.aab
+*.log
+
+# Local reference material (not part of the app)
+Playlist/
+
+# Node tooling for auxiliary experiments
 node_modules
-Playlist

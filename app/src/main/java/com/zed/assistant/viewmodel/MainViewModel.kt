@@ -2,7 +2,6 @@ package com.zed.assistant.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import com.zed.assistant.ai.CreatorPrompt
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
@@ -22,8 +21,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   val level: StateFlow<Float> = ZedEngine.level
   val chatTurns: StateFlow<List<ChatMessage>> = ZedEngine.chatTurns
   val avatarState: StateFlow<String> = ZedEngine.avatarState
-  val creatorUnlocked: StateFlow<Boolean> = ZedEngine.creatorUnlocked
-  val creatorPrompt: StateFlow<CreatorPrompt?> = ZedEngine.creatorPrompt
   val themeMode: StateFlow<ZedThemeMode> = ZedThemeRepository.mode
   val liquidGlass: StateFlow<Boolean> = ZedThemeRepository.liquidGlass
 
@@ -74,25 +71,5 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ZedEngine.setScreenContext(getApplication(), enabled)
   }
 
-  fun requestCreatorChallenge(voice: Boolean = false) {
-    ZedEngine.requestCreatorChallenge(voice)
-  }
 
-  fun verifyCreatorCode(code: String) {
-    ZedEngine.verifyCreatorCode(code)
-  }
-
-  fun retryCreatorVoice() {
-    ZedEngine.retryCreatorVoice()
-  }
-
-  fun cancelCreatorChallenge() {
-    ZedEngine.cancelCreatorChallenge()
-  }
-
-  fun changeCreatorCode(code: String): Boolean = ZedEngine.changeCreatorCode(code)
-
-  fun lockCreator() {
-    ZedEngine.lockCreator()
-  }
 }

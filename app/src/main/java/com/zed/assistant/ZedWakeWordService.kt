@@ -185,7 +185,7 @@ class ZedWakeWordService : Service() {
           }
           if (preferences.soundEffectsEnabled) ZedSoundEffects.wake()
           updateNotification("Waking Zed", "Opening a Gemini Live session")
-          ZedEngine.start(applicationContext)
+          ZedEngine.start(applicationContext, fromWakeWord = true)
           // Wait for the session to take the mic, then release ours.
           withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
           break

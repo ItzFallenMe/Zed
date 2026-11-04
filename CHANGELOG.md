@@ -10,6 +10,15 @@ one continuous line rather than a jump from 1.1.0 to 2.0.0.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-11-04
+
+### Changed
+
+- Refined the Home header into a balanced responsive row with truncation for long greetings and smaller-screen spacing.
+- Reduced fixed Home screen padding and quick-action card height to give the avatar and status more usable space.
+- Updated Home instructions to refer to the robot avatar rather than the removed orb interaction.
+- Removed the permanent Updates notification dot so the dock no longer implies unread updates when none are tracked.
+
 ## [2.1.1] - 2026-11-04
 
 ### Fixed

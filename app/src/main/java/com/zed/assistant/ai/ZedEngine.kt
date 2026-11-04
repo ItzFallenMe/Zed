@@ -117,6 +117,8 @@ object ZedEngine {
   private var memory: MemoryStore? = null
   private var weather: WeatherRepository? = null
   private var avatarResetJob: Job? = null
+  private var idleSleepJob: Job? = null
+  @Volatile private var wakeWordGreetingPending = false
   private var screenFrameJob: Job? = null
   private var creatorChallenge: CreatorChallengeSession? = null
 
@@ -200,7 +202,7 @@ object ZedEngine {
     if (isActive.value) stop() else start(context)
   }
 
-  fun start(context: Context) {
+  fun start(context: Context, fromWakeWord: Boolean = false) {
     initialize(context)
     if (isActive.value) return
     if (creatorPrompt.value != null) {
@@ -221,6 +223,8 @@ object ZedEngine {
 
     errorMessage.value = null
     actionNote.value = null
+    idleSleepJob?.cancel()
+    wakeWordGreetingPending = fromWakeWord
     userText.value = ""
     zedText.value = ""
     isActive.value = true
@@ -445,6 +449,10 @@ object ZedEngine {
         status.value = "Listening…"
       }
       startScreenContext()
+      if (wakeWordGreetingPending) {
+        wakeWordGreetingPending = false
+        client?.sendText("Say exactly: Yes, boss.")
+      }
       dispatchQueuedText()
     }
 
@@ -1045,7 +1053,7 @@ object ZedEngine {
 
   private fun syncAvatar() {
     if (avatarResetJob?.isActive == true) return
-    avatarState.value = defaultAvatarState()
+    avatarState.value = if (!isActive.value && state.value == AssistantState.IDLE) "idle" else defaultAvatarState()
   }
 
   /** Shows a transient avatar expression (happy/error) before returning to the current activity. */
@@ -1139,7 +1147,17 @@ object ZedEngine {
   private fun setState(newState: AssistantState) {
     if (state.value != newState) Log.d(TAG, "State ${state.value} -> $newState")
     state.value = newState
+    idleSleepJob?.cancel()
     syncAvatar()
+    if (newState == AssistantState.IDLE) {
+      idleSleepJob = scope.launch {
+        delay(60_000L)
+        if (!isActive.value && state.value == AssistantState.IDLE) {
+          avatarResetJob?.cancel()
+          avatarState.value = "sleeping"
+        }
+      }
+    }
   }
 
   private fun friendlyError(detail: String): String {

@@ -8,11 +8,11 @@ when the maintainer supplies a keystore; no signing material is committed.
 Update `versionCode` and `versionName` in `app/build.gradle.kts`, then add a
 section to `CHANGELOG.md`.
 
-For 2.1.2 the values are:
+For 2.1.3 the values are:
 
 ```kotlin
-versionCode = 23
-versionName = "2.1.2"
+versionCode = 24
+versionName = "2.1.3"
 ```
 
 `versionCode` must always increase, even for a documentation-only rebuild.
@@ -52,7 +52,7 @@ The signed APK is written to `app/build/outputs/apk/release/`.
 ## 4. Tag and publish
 
 ```bash
-git tag -s v2.1.2 -m "Z.E.D. 2.1.2"
+git tag -s v2.1.3 -m "Z.E.D. 2.1.3"
 git push origin v2.1.0
 ```
 

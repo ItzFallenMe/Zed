@@ -1,25 +1,30 @@
-name: Build Zed APK
+name: Build and Release Zed APK
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
+    name: Test and build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -30,31 +35,86 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Test, build, and lint debug APK
+      - name: Validate release signing secrets
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ZED_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ZED_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ZED_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ZED_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub Actions secret for release signing: $name. Configure all four ZED_RELEASE_* secrets."
+              exit 1
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/zed-signing"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/zed-signing/release.jks"
+          test -s "$RUNNER_TEMP/zed-signing/release.jks"
+          echo "ZED_RELEASE_STORE_FILE=$RUNNER_TEMP/zed-signing/release.jks" >> "$GITHUB_ENV"
+          echo "ZED_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ZED_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ZED_RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Run unit tests and build debug APK
+        if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleRelease :app:lintRelease --no-daemon
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
 
-      - name: Upload APK
-        if: github.event_name != 'pull_request'
+      - name: Run tests, lint, and build signed release APK
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease --no-daemon
+
+      - name: Prepare release APK and checksum
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::Expected signed release APK was not produced."
+            find app/build/outputs/apk -maxdepth 3 -type f -print || true
+            exit 1
+          fi
+          mkdir -p release
+          cp "$APK" "release/Zed-$RELEASE_TAG.apk"
+          cd release
+          sha256sum "Zed-$RELEASE_TAG.apk" > "Zed-$RELEASE_TAG.apk.sha256"
+
+      - name: Upload debug APK
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: zed-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
 
-      - name: Upload unsigned release APK
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          name: zed-release-unsigned-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error
+          tag_name: ${{ github.ref_name }}
+          name: Zed ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/Zed-${{ github.ref_name }}.apk
+            release/Zed-${{ github.ref_name }}.apk.sha256
 
-      - name: Upload lint report
+      - name: Upload lint reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zed-lint-report
-          path: app/build/reports/lint-results-debug.html
+          name: zed-lint-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-release.html
           if-no-files-found: ignore
+          retention-days: 7

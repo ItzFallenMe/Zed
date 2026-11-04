@@ -1,0 +1,13 @@
+{
+  "name": "zed-voice",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "sync": "npm run build && cap sync android",
+    "android:apk": "npm run sync && cd android && ./gradlew assembleDebug"
+  }
+}

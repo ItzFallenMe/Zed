@@ -84,7 +84,6 @@ import com.zed.assistant.ai.PermissionGateway
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.overlay.ZedOverlayService
 import com.zed.assistant.screen.ScreenCaptureService
-import com.zed.assistant.data.CreatorGate
 import com.zed.assistant.data.ZedPreferences
 import com.zed.assistant.data.ZedVoiceProfiles
 import com.zed.assistant.ui.components.GlassCard
@@ -460,31 +459,6 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
           putString(ZedPreferences.KEY_VOICE_PRESET, selectedPreset)
         }
         activeDialog = null
-      }
-    )
-    DIALOG_CREATOR -> CreatorPanelDialog(
-      unlocked = creatorUnlocked,
-      onUnlockWithCode = {
-        activeDialog = null
-        viewModel.requestCreatorChallenge(voice = false)
-      },
-      onUnlockWithVoice = {
-        activeDialog = null
-        viewModel.requestCreatorChallenge(voice = true)
-      },
-      onChangeCode = { activeDialog = DIALOG_CREATOR_CODE },
-      onLock = {
-        viewModel.lockCreator()
-        activeDialog = null
-      },
-      onDismiss = { activeDialog = null }
-    )
-    DIALOG_CREATOR_CODE -> CreatorCodeDialog(
-      onDismiss = { activeDialog = null },
-      onSave = { newCode ->
-        val saved = viewModel.changeCreatorCode(newCode)
-        if (saved) activeDialog = null
-        saved
       }
     )
     DIALOG_OWNER_VOICE -> OwnerVoiceDialog(

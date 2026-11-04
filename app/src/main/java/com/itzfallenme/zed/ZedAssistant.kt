@@ -337,9 +337,14 @@ class ZedAssistant(private val context: Context) : Closeable {
                             delay(8)
                             continue
                         }
-                        val written = speaker?.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING) ?: -1
-                        if (written < 0) throw IllegalStateException("AudioTrack.write failed: " + written)
-                        if (written != pcm.size) Log.w(TAG, "AudioTrack partial write: " + written + "/" + pcm.size)
+                        var offset = 0
+                        while (offset < pcm.size) {
+                            val written = speaker?.write(
+                                pcm, offset, pcm.size - offset, AudioTrack.WRITE_BLOCKING
+                            ) ?: -1
+                            if (written <= 0) throw IllegalStateException("AudioTrack.write failed: " + written)
+                            offset += written
+                        }
                     }
                 } catch (error: Exception) {
                     if (isActive) {

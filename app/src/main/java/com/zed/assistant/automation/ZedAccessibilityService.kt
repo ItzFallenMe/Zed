@@ -448,11 +448,12 @@ class ZedAccessibilityService : AccessibilityService() {
     fun click(query: String): JSONObject = instance?.clickElement(query)
       ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
 
-    fun clickSend(): JSONObject = instance?.clickWhatsAppSend()
-      ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
+    fun clickSend(context: Context): JSONObject = instance?.clickWhatsAppSend()
+      ?: JSONObject().put("success", false).put("error", unavailableError(context))
 
-    fun clickYouTubeResult(query: String): JSONObject = instance?.clickYouTubeResult(query)
-      ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
+    fun clickYouTubeResult(query: String, context: Context): JSONObject =
+      instance?.clickYouTubeResult(query)
+        ?: JSONObject().put("success", false).put("error", unavailableError(context))
 
     fun type(text: String, targetHint: String?): JSONObject = instance?.typeText(text, targetHint)
       ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")

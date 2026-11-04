@@ -6,7 +6,7 @@
 
 [![Build](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml/badge.svg)](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.2-8B5CF6.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.3-8B5CF6.svg)](CHANGELOG.md)
 ![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)
 
 </div>

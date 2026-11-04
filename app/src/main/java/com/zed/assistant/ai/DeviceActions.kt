@@ -364,7 +364,7 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
     }
 
     withContext(Dispatchers.IO) { delay(1_800) }
-    val send = ZedAccessibilityService.clickSend()
+    val send = ZedAccessibilityService.clickSend(context)
     return success("sendWhatsAppMessage") {
       put("contactName", match.name)
       put("mode", if (send.optBoolean("success")) "auto_send_tapped" else "prefilled")
@@ -405,7 +405,7 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
     if (!launch(intent)) return failure("playYouTube", "no_app_can_open_url")
 
     withContext(Dispatchers.IO) { delay(2_200) }
-    val click = ZedAccessibilityService.clickYouTubeResult(query)
+    val click = ZedAccessibilityService.clickYouTubeResult(query, context)
     return success("playYouTube") {
       put("query", query)
       put("mode", if (click.optBoolean("success")) "auto_play_tapped" else "results")

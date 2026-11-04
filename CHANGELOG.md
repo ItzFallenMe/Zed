@@ -10,6 +10,19 @@ one continuous line rather than a jump from 1.1.0 to 2.0.0.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-04
+
+### Fixed
+
+- Hardened the bundled robot avatar WebView so the UI waits for the canvas renderer, not merely the HTML page, before sending state updates.
+- Restricted local WebView file access, disabled unnecessary storage and zoom controls, and added clear main-frame asset failure logging.
+- Fixed floating overlay renderer readiness checks and queued avatar state until the renderer is ready.
+- Removed the overlay's no-limits window flag and constrained its window to the app display area to reduce off-screen placement and clipping.
+
+### Changed
+
+- Version is `2.1.1` (`versionCode` 22).
+
 ## [2.1.0] - 2026-11-04
 
 Advanced automation and presence pass. Every new action reports what it

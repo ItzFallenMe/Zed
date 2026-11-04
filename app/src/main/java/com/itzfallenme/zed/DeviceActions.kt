@@ -27,7 +27,8 @@ class DeviceActions(private val context: Context) {
 
     fun openUrl(raw: String): Result<Unit> {
         val uri = Uri.parse(raw.trim())
-        if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host.isNullOrBlank()) {
+        val scheme = uri.scheme?.lowercase()
+        if ((scheme != "https" && scheme != "http") || uri.host.isNullOrBlank()) {
             return Result.failure(IllegalArgumentException("Only valid HTTP/HTTPS URLs are allowed."))
         }
         val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

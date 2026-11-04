@@ -49,7 +49,7 @@ object PermissionGateway {
     Log.d(TAG, "Requesting permission: $permission")
     return suspendCancellableCoroutine { continuation ->
       val accepted = synchronized(lock) {
-        if (pendingContinuation?.isActive == true) {
+        if (pendingPermission != null) {
           false
         } else {
           pendingPermission = permission
@@ -63,12 +63,9 @@ object PermissionGateway {
         return@suspendCancellableCoroutine
       }
 
-      continuation.invokeOnCancellation {
-        synchronized(lock) {
-          // A cancelled older request must never clear a newer request.
-          if (pendingContinuation === continuation) clearPendingLocked()
-        }
-      }
+      // Do not clear the pending permission when the caller is cancelled:
+      // Android's permission dialog is still outstanding and its result must
+      // be consumed before another request can be launched.
       try {
         activityLauncher(permission)
       } catch (error: Exception) {

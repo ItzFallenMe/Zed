@@ -126,6 +126,9 @@ class WeatherRepository(private val context: Context) {
             if (continuation.isActive) continuation.resume(location)
           }
         }
+        continuation.invokeOnCancellation {
+          runCatching { LocationManagerCompat.removeUpdates(manager, listener) }
+        }
         val provider = when {
           manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
           manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER

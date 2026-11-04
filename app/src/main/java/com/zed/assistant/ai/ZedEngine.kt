@@ -715,7 +715,15 @@ object ZedEngine {
       val needsUi = steps.any {
         it.op in setOf("tap", "type", "scroll", "press", "inspect", "look")
       }
-      if (needsUi) return toolFailure("runTask", "accessibility_service_disabled")
+      if (needsUi) {
+        val app = appContext
+        val error = if (app != null && ZedAccessibilityService.isEnabledInSettings(app)) {
+          "accessibility_service_not_connected"
+        } else {
+          "accessibility_service_disabled"
+        }
+        return toolFailure("runTask", error)
+      }
     }
     status.value = "Planning task…"
     avatarState.value = "working"
@@ -886,6 +894,7 @@ object ZedEngine {
         "invalid_url" -> "That URL doesn't look valid"
         "no_dialer_available", "no_app_can_open_url" -> "This phone can't open that"
         "accessibility_service_disabled" -> "Enable Zed's accessibility service first"
+        "accessibility_service_not_connected" -> "Zed's accessibility permission is enabled, but Android has not connected the service yet. Reopen Accessibility settings or restart Zed."
         "element_not_found" -> "I couldn't see that on screen"
         "no_editable_field" -> "There is no text field on screen"
         "screen_capture_unavailable" -> "Screen capture isn't available"

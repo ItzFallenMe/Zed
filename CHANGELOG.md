@@ -13,6 +13,9 @@ one continuous line rather than a jump from 1.1.0 to 2.0.0.
 ## [2.1.3] - 2026-11-04
 
 ### Fixed
+- Serialized runtime permission requests and prevented cancelled callers from clearing an outstanding Android permission dialog.
+- Removed pending location updates when a weather lookup is cancelled or times out.
+- Escaped SQL LIKE wildcards in memory search and keyword deletion so `%` and `_` are treated literally.
 - Fixed floating overlay clipping when an alternate skin falls back to the bundled robot renderer.
 - Prevented concurrent multi-step device automation tasks with an atomic running guard.
 - Improved multi-step automation errors when accessibility is enabled but not connected.

@@ -99,7 +99,7 @@ import com.zed.assistant.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
 /**
- * Settings grouped around operator identity, voice, presence, creator access,
+ * Settings grouped around operator identity, voice, presence, device access,
  * data safety, and appearance. Every row opens a focused dialog rather than
  * scattering inputs across the page.
  */
@@ -250,7 +250,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
           )
           GroupDivider()
           SettingRow(
-            icon = Icons.Rounded.Shield,
+            icon = Icons.Rounded.Lock,
             title = "Owner voice",
             subtitle = if (ownerVoiceEnabled) {
               "Wake word only opens for your enrolled voice"
@@ -358,7 +358,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
           )
           GroupDivider()
           SettingRow(
-            icon = Icons.Rounded.Shield,
+            icon = Icons.Rounded.Lock,
             title = "Permissions & access",
             subtitle = "Microphone, contacts, overlay, accessibility",
             onClick = { activeDialog = DIALOG_PERMISSIONS }
@@ -506,12 +506,12 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     )
     DIALOG_IDENTITY -> ZedInfoDialog(
       title = "App identity",
-      message = "Z.E.D. ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})\nPackage: ${BuildConfig.APPLICATION_ID}\nCreator: Vedant, ItzFallenMe\nLicense: MIT\n\nCreator access is verified locally by a PBKDF2-hashed code sealed with the Android Keystore. No remote attestation or verification backend is configured.",
+      message = "Z.E.D. ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})\nPackage: ${BuildConfig.APPLICATION_ID}\nCreator: Vedant, ItzFallenMe\nLicense: MIT",
       onDismiss = { activeDialog = null }
     )
     DIALOG_ABOUT -> ZedInfoDialog(
       title = "About Zed",
-      message = "Z.E.D. — Zeta Evolved Device Intelligence — is a native Android voice partner built with Kotlin and Jetpack Compose. It streams microphone PCM to Gemini Live, plays Gemini's native audio through a persistent AudioTrack, and keeps creator verification, wake-word detection and speaker vectors on the device.\n\nCreated and maintained by Vedant, ItzFallenMe.",
+      message = "Z.E.D. — Zeta Evolved Device Intelligence — is a native Android voice partner built with Kotlin and Jetpack Compose. It streams microphone PCM to Gemini Live and plays Gemini's native audio through a persistent AudioTrack. Wake-word detection and speaker vectors are processed on the device.\n\nCreated and maintained by Vedant, ItzFallenMe.",
       onDismiss = { activeDialog = null }
     )
   }
@@ -661,8 +661,6 @@ private const val DIALOG_ACTIONS = "actions"
 private const val DIALOG_IDENTITY = "identity"
 private const val DIALOG_THEME = "theme"
 private const val DIALOG_ABOUT = "about"
-private const val DIALOG_CREATOR = "creator"
-private const val DIALOG_CREATOR_CODE = "creator_code"
 private const val DIALOG_OWNER_VOICE = "owner_voice"
 private const val DIALOG_OVERLAY_STYLE = "overlay_style"
 private const val DIALOG_MEMORY = "memory"
@@ -1113,161 +1111,6 @@ private fun PersonaDialog(
     confirmButton = {
       TextButton(onClick = { onSave(name.trim(), selectedProfile.geminiVoice, selectedProfile.id) }) {
         Text("SAVE", color = palette.accent, fontWeight = FontWeight.Bold)
-      }
-    },
-    dismissButton = {
-      TextButton(onClick = onDismiss) {
-        Text("CANCEL", color = palette.textMuted, fontWeight = FontWeight.Bold)
-      }
-    },
-    containerColor = palette.card,
-    shape = RoundedCornerShape(22.dp)
-  )
-}
-
-@Composable
-private fun CreatorPanelDialog(
-  unlocked: Boolean,
-  onUnlockWithCode: () -> Unit,
-  onUnlockWithVoice: () -> Unit,
-  onChangeCode: () -> Unit,
-  onLock: () -> Unit,
-  onDismiss: () -> Unit
-) {
-  val palette = LocalZedPalette.current
-  AlertDialog(
-    onDismissRequest = onDismiss,
-    title = {
-      Text(
-        if (unlocked) "Creator verified" else "Creator access",
-        color = palette.textPrimary,
-        fontWeight = FontWeight.Bold
-      )
-    },
-    text = {
-      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-          if (unlocked) {
-            "You are recognized as Vedant, ItzFallenMe. Master control is active: system navigation, wake word, floating avatar, themes, memory and conversation controls are available to Zed."
-          } else {
-            "Say or type your creator code to unlock master control. Verification happens only on this device. The first-run code is 160123; change it after you unlock."
-          },
-          color = palette.textMuted,
-          fontSize = 12.sp,
-          lineHeight = 18.sp
-        )
-        if (unlocked) {
-          Text(
-            "Zed never sends the code to Gemini and never asks for it in conversation.",
-            color = palette.textSecondary,
-            fontSize = 11.sp,
-            lineHeight = 16.sp
-          )
-        }
-      }
-    },
-    confirmButton = {
-      if (unlocked) {
-        TextButton(onClick = onLock) {
-          Text("LOCK MASTER CONTROL", color = palette.error, fontWeight = FontWeight.Bold)
-        }
-      } else {
-        TextButton(onClick = onUnlockWithCode) {
-          Text("ENTER CODE", color = palette.accent, fontWeight = FontWeight.Bold)
-        }
-      }
-    },
-    dismissButton = {
-      Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-        if (unlocked) {
-          TextButton(onClick = onChangeCode) {
-            Text("CHANGE CODE", color = palette.accent, fontWeight = FontWeight.Bold)
-          }
-        } else {
-          TextButton(onClick = onUnlockWithVoice) {
-            Text("USE VOICE", color = palette.textSecondary, fontWeight = FontWeight.Bold)
-          }
-        }
-        TextButton(onClick = onDismiss) {
-          Text("CLOSE", color = palette.textMuted, fontWeight = FontWeight.Bold)
-        }
-      }
-    },
-    containerColor = palette.card,
-    shape = RoundedCornerShape(22.dp)
-  )
-}
-
-@Composable
-private fun CreatorCodeDialog(
-  onDismiss: () -> Unit,
-  onSave: (String) -> Boolean
-) {
-  val palette = LocalZedPalette.current
-  var newCode by remember { mutableStateOf("") }
-  var confirmation by remember { mutableStateOf("") }
-  var error by remember { mutableStateOf<String?>(null) }
-
-  AlertDialog(
-    onDismissRequest = onDismiss,
-    title = { Text("Change creator code", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
-    text = {
-      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-          "Use ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digits. The new code is hashed with PBKDF2 and encrypted with the Android Keystore.",
-          color = palette.textMuted,
-          fontSize = 12.sp,
-          lineHeight = 18.sp
-        )
-        OutlinedTextField(
-          value = newCode,
-          onValueChange = { value ->
-            newCode = value.filter(Char::isDigit).take(CreatorGate.MAX_CODE_LENGTH)
-            error = null
-          },
-          label = { Text("New code", color = palette.textMuted) },
-          singleLine = true,
-          visualTransformation = PasswordVisualTransformation(),
-          keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.NumberPassword,
-            imeAction = ImeAction.Next
-          ),
-          modifier = Modifier.fillMaxWidth(),
-          colors = zedFieldColors()
-        )
-        OutlinedTextField(
-          value = confirmation,
-          onValueChange = { value ->
-            confirmation = value.filter(Char::isDigit).take(CreatorGate.MAX_CODE_LENGTH)
-            error = null
-          },
-          label = { Text("Confirm new code", color = palette.textMuted) },
-          singleLine = true,
-          visualTransformation = PasswordVisualTransformation(),
-          keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.NumberPassword,
-            imeAction = ImeAction.Done
-          ),
-          modifier = Modifier.fillMaxWidth(),
-          colors = zedFieldColors()
-        )
-        if (error != null) {
-          Text(error!!, color = palette.error, fontSize = 12.sp)
-        }
-      }
-    },
-    confirmButton = {
-      TextButton(
-        onClick = {
-          when {
-            !CreatorGate.isValidCodeFormat(newCode) ->
-              error = "Use ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digits."
-            newCode != confirmation -> error = "The two codes don't match."
-            !onSave(newCode) -> error = "Could not save the code. Try again."
-          }
-        }
-      ) {
-        Text("SAVE CODE", color = palette.accent, fontWeight = FontWeight.Bold)
       }
     },
     dismissButton = {

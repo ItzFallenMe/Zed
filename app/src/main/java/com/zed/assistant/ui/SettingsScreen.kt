@@ -45,7 +45,6 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.RecordVoiceOver
-import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -152,7 +151,6 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 
   val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
   val liquidGlass by viewModel.liquidGlass.collectAsStateWithLifecycle()
-  val creatorUnlocked by viewModel.creatorUnlocked.collectAsStateWithLifecycle()
   var activeDialog by rememberSaveable { mutableStateOf<String?>(null) }
 
   BackHandler { onBack() }
@@ -343,36 +341,6 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(18.dp))
-        SectionLabel("CREATOR PROTOCOL")
-        SettingsGroup {
-          SettingRow(
-            icon = Icons.Rounded.Shield,
-            title = "Creator recognition",
-            subtitle = if (creatorUnlocked) {
-              "Vedant · master control active"
-            } else {
-              "Not verified · say your code to unlock"
-            },
-            onClick = { activeDialog = DIALOG_CREATOR },
-            trailing = {
-              GlassChip(
-                label = if (creatorUnlocked) "CREATOR" else "LOCKED",
-                contentColor = if (creatorUnlocked) palette.accent else palette.textMuted,
-                background = if (creatorUnlocked) palette.accentSoft else palette.card
-              )
-            }
-          )
-          if (creatorUnlocked) {
-            GroupDivider()
-            SettingRow(
-              icon = Icons.Rounded.Key,
-              title = "Change creator code",
-              subtitle = "Replace the default 160123 with your own code",
-              onClick = { activeDialog = DIALOG_CREATOR_CODE }
-            )
-          }
-        }
-
         Spacer(modifier = Modifier.height(18.dp))
         SectionLabel("SYSTEM & DATA ENGINE")
         SettingsGroup {
@@ -554,7 +522,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     )
     DIALOG_PRIVACY -> ZedInfoDialog(
       title = "Data & privacy",
-      message = "Your Gemini API key and creator-code hash are stored in this app's private preferences, encrypted with keys held by the Android Keystore. The key is sent only to Google's Live endpoint when a session starts. Android backup is disabled, microphone audio is streamed only during an active session, and contacts are read only when you ask Zed to call someone by name.",
+      message = "Your Gemini API key is stored in this app's private preferences, encrypted with keys held by the Android Keystore. The key is sent only to Google's Live endpoint when a session starts. Android backup is disabled, microphone audio is streamed only during an active session, and contacts are read only when you ask Zed to call someone by name.",
       onDismiss = { activeDialog = null }
     )
     DIALOG_ACTIONS -> ZedInfoDialog(

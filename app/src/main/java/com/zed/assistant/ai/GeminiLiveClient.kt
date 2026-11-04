@@ -621,23 +621,23 @@ class GeminiLiveClient(
 
     declarations.put(
       functionDeclaration(
-        name = "creatorControl",
-        description = "Creator-only master control for system actions and Zed's own settings. This only works after the user verifies creator access locally in the app. If it returns creator_access_required, tell the user to verify in Settings > Creator access; never ask for the code in conversation.",
+        name = "appControl",
+        description = "Change Zed app settings or invoke a device navigation action explicitly requested by the user. Requires normal Android permissions and confirmations for sensitive actions.",
         properties = JSONObject().put(
           "action",
           JSONObject()
             .put("type", "STRING")
-            .put("description", "Master-control command to run.")
+            .put("description", "App-control command.")
             .put(
               "enum",
               JSONArray(
                 listOf(
-                  "lock_screen", "go_home", "go_back", "open_recents",
+                  "go_home", "go_back", "open_recents",
                   "open_notifications", "open_quick_settings", "clear_memory",
                   "clear_conversation", "enable_wake_word", "disable_wake_word",
                   "enable_overlay", "disable_overlay", "set_dark_theme",
                   "set_light_theme", "enable_screen_context",
-                  "disable_screen_context", "lock_creator"
+                  "disable_screen_context"
                 )
               )
             )

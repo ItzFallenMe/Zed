@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,41 +35,45 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zed.assistant.ui.theme.LocalLiquidGlassEnabled
 import com.zed.assistant.ui.theme.LocalZedPalette
 
-/** Page background with the soft liquid-glass glow fields from the reference design. */
+/** Page background with soft liquid-glass glow fields, or a flat theme surface. */
 @Composable
 fun LiquidBackground(
   modifier: Modifier = Modifier,
   content: @Composable BoxScope.() -> Unit
 ) {
   val palette = LocalZedPalette.current
+  val liquid = LocalLiquidGlassEnabled.current
   Box(
     modifier = modifier
       .fillMaxSize()
-      .background(palette.background)
+      .background(if (liquid) palette.background else MaterialTheme.colorScheme.background)
   ) {
-    AmbientGlow(
-      color = palette.glowOne,
-      modifier = Modifier
-        .align(Alignment.TopEnd)
-        .offset(x = 96.dp, y = (-86).dp)
-        .size(290.dp)
-    )
-    AmbientGlow(
-      color = palette.glowTwo,
-      modifier = Modifier
-        .align(Alignment.CenterStart)
-        .offset(x = (-116).dp, y = (-20).dp)
-        .size(280.dp)
-    )
-    AmbientGlow(
-      color = palette.glowThree,
-      modifier = Modifier
-        .align(Alignment.BottomEnd)
-        .offset(x = 92.dp, y = 108.dp)
-        .size(300.dp)
-    )
+    if (liquid) {
+      AmbientGlow(
+        color = palette.glowOne,
+        modifier = Modifier
+          .align(Alignment.TopEnd)
+          .offset(x = 96.dp, y = (-86).dp)
+          .size(290.dp)
+      )
+      AmbientGlow(
+        color = palette.glowTwo,
+        modifier = Modifier
+          .align(Alignment.CenterStart)
+          .offset(x = (-116).dp, y = (-20).dp)
+          .size(280.dp)
+      )
+      AmbientGlow(
+        color = palette.glowThree,
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .offset(x = 92.dp, y = 108.dp)
+          .size(300.dp)
+      )
+    }
     content()
   }
 }
@@ -108,6 +113,17 @@ fun GlassCard(
   } else {
     Modifier
   }
+  if (!LocalLiquidGlassEnabled.current) {
+    Surface(
+      modifier = modifier.then(interaction),
+      shape = shape,
+      color = MaterialTheme.colorScheme.surface,
+      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+      Column(modifier = Modifier.padding(contentPadding), content = content)
+    }
+    return
+  }
   Column(
     modifier = modifier
       .shadow(10.dp, shape, clip = false)
@@ -132,23 +148,34 @@ fun GlassIconButton(
   tint: Color? = null
 ) {
   val palette = LocalZedPalette.current
+  val liquid = LocalLiquidGlassEnabled.current
   Box(
     modifier = modifier
       .size(46.dp)
       .clip(RoundedCornerShape(15.dp))
       .background(
-        Brush.verticalGradient(
-          listOf(palette.cardGlassStart.copy(alpha = 0.92f), palette.cardGlassEnd.copy(alpha = 0.72f))
-        )
+        if (liquid) {
+          Brush.verticalGradient(
+            listOf(palette.cardGlassStart.copy(alpha = 0.92f), palette.cardGlassEnd.copy(alpha = 0.72f))
+          )
+        } else {
+          Brush.verticalGradient(
+            listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant)
+          )
+        }
       )
-      .border(1.dp, palette.cardBorder.copy(alpha = 0.75f), RoundedCornerShape(15.dp))
+      .border(
+        1.dp,
+        if (liquid) palette.cardBorder.copy(alpha = 0.75f) else MaterialTheme.colorScheme.outlineVariant,
+        RoundedCornerShape(15.dp)
+      )
       .clickable(role = Role.Button, onClick = onClick),
     contentAlignment = Alignment.Center
   ) {
     Icon(
       imageVector = icon,
       contentDescription = contentDescription,
-      tint = tint ?: palette.textPrimary,
+      tint = tint ?: if (liquid) palette.textPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.size(22.dp)
     )
   }
@@ -164,12 +191,16 @@ fun GlassChip(
   background: Color? = null
 ) {
   val palette = LocalZedPalette.current
-  val color = contentColor ?: palette.textSecondary
+  val liquid = LocalLiquidGlassEnabled.current
+  val color = contentColor ?: if (liquid) palette.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
   Surface(
     modifier = modifier,
-    color = background ?: palette.card.copy(alpha = 0.7f),
+    color = background ?: if (liquid) palette.card.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceVariant,
     shape = RoundedCornerShape(50),
-    border = BorderStroke(1.dp, color.copy(alpha = 0.22f))
+    border = BorderStroke(
+      1.dp,
+      if (liquid) color.copy(alpha = 0.22f) else MaterialTheme.colorScheme.outlineVariant
+    )
   ) {
     Row(
       modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -221,6 +252,17 @@ fun ZedWordmark(
   letterSpacing: Int = 7
 ) {
   val palette = LocalZedPalette.current
+  if (!LocalLiquidGlassEnabled.current) {
+    Text(
+      text = "ZED",
+      modifier = modifier,
+      color = MaterialTheme.colorScheme.onBackground,
+      fontSize = fontSize.sp,
+      fontWeight = FontWeight.Bold,
+      letterSpacing = letterSpacing.sp
+    )
+    return
+  }
   Text(
     text = "ZED",
     modifier = modifier,

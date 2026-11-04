@@ -5,11 +5,17 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -232,6 +238,199 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
       put("contactName", match.name)
       put("phoneNumber", match.number)
       put("mode", result.optString("mode", "dialer"))
+    }
+  }
+
+  /** Launch any installed app by its visible label, not just the old allowlist. */
+  suspend fun openAnyApp(rawQuery: String): JSONObject {
+    val query = rawQuery.trim()
+    if (query.isBlank()) return failure("openApp", "missing_app_name")
+
+    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val activities = try {
+      context.packageManager.queryIntentActivities(launcherIntent, 0)
+    } catch (error: Exception) {
+      Log.e(TAG, "Could not query installed apps", error)
+      return failure("openApp", "app_query_failed")
+    }
+
+    val apps = activities.mapNotNull { activity ->
+      val packageName = activity.activityInfo?.packageName ?: return@mapNotNull null
+      if (packageName == context.packageName) return@mapNotNull null
+      val label = activity.loadLabel(context.packageManager).toString()
+      packageName to label
+    }.distinctBy { it.first }
+
+    val needle = normalizeApp(query)
+    val exact = apps.filter { normalizeApp(it.second) == needle }
+    val starting = apps.filter { normalizeApp(it.second).startsWith(needle) }
+    val containing = apps.filter { normalizeApp(it.second).contains(needle) }
+    val matches = when {
+      exact.isNotEmpty() -> exact
+      starting.isNotEmpty() -> starting
+      else -> containing
+    }.distinctBy { it.first }
+
+    if (matches.isEmpty()) return failure("openApp", "app_not_installed") { put("app", query) }
+
+    val distinctLabels = matches.map { normalizeApp(it.second) }.distinct()
+    if (matches.size > 1 && distinctLabels.size > 1) {
+      val candidates = JSONArray()
+      matches.take(8).forEach { (packageName, label) ->
+        candidates.put(JSONObject().put("name", label).put("package", packageName))
+      }
+      return failure("openApp", "multiple_matches") {
+        put("app", query)
+        put("candidates", candidates)
+        put("instruction", "Ask which app the user meant. Do not guess.")
+      }
+    }
+
+    val (packageName, label) = matches.first()
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+      ?: return failure("openApp", "app_not_installed") { put("app", label) }
+    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    return if (launch(launchIntent)) {
+      Log.d(TAG, "Launched $label ($packageName)")
+      success("openApp") { put("app", label).put("package", packageName) }
+    } else {
+      failure("openApp", "app_launch_failed") { put("app", label) }
+    }
+  }
+
+  /** Open a WhatsApp chat with the message prefilled; the user still taps send. */
+  suspend fun sendWhatsAppMessage(rawName: String, message: String): JSONObject {
+    val name = rawName.trim()
+    val body = message.trim()
+    if (name.length < 2) return failure("sendWhatsAppMessage", "invalid_contact_name")
+    if (body.isBlank()) return failure("sendWhatsAppMessage", "empty_message")
+
+    val granted = PermissionGateway.ensure(context, Manifest.permission.READ_CONTACTS)
+    if (!granted) return failure("sendWhatsAppMessage", "contacts_permission_denied")
+
+    val matches = try {
+      withContext(Dispatchers.IO) { contacts.searchByName(name) }
+    } catch (error: Exception) {
+      return failure("sendWhatsAppMessage", "contact_lookup_failed")
+    }
+    if (matches.isEmpty()) {
+      return failure("sendWhatsAppMessage", "contact_not_found") { put("contactName", name) }
+    }
+    if (matches.map { it.contactId }.distinct().size > 1 || matches.size > 1) {
+      val candidates = JSONArray()
+      matches.take(6).forEach { match ->
+        candidates.put(JSONObject().put("name", match.name).put("number", match.number))
+      }
+      return failure("sendWhatsAppMessage", "multiple_matches") {
+        put("contactName", name)
+        put("candidates", candidates)
+        put("instruction", "Ask which contact the user meant. Do not guess.")
+      }
+    }
+
+    val match = matches.first()
+    val digits = match.number.filter { it.isDigit() }
+    if (digits.length < 7) return failure("sendWhatsAppMessage", "contact_has_no_valid_number")
+
+    val uri = "https://wa.me/$digits?text=${Uri.encode(body)}".toUri()
+    val whatsapp = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val packages = APP_PACKAGES.getValue("whatsapp")
+    val installed = packages.firstOrNull {
+      context.packageManager.getLaunchIntentForPackage(it) != null
+    }
+    if (installed == null) return failure("sendWhatsAppMessage", "whatsapp_not_installed")
+
+    whatsapp.setPackage(installed)
+    val launched = launch(whatsapp) || launch(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    return if (launched) {
+      success("sendWhatsAppMessage") {
+        put("contactName", match.name)
+        put("mode", "prefilled")
+        put("note", "WhatsApp opened with the message ready; the user must confirm sending.")
+      }
+    } else {
+      failure("sendWhatsAppMessage", "whatsapp_launch_failed")
+    }
+  }
+
+  suspend fun searchYouTube(rawQuery: String): JSONObject {
+    val query = rawQuery.trim()
+    if (query.isBlank()) return failure("searchYouTube", "empty_query")
+    val url = "https://www.youtube.com/results?search_query=${Uri.encode(query)}"
+    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return if (launch(intent)) {
+      success("searchYouTube") { put("query", query) }
+    } else {
+      failure("searchYouTube", "no_app_can_open_url")
+    }
+  }
+
+  suspend fun controlMedia(rawAction: String): JSONObject {
+    val keyCode = when (rawAction.lowercase(Locale.ROOT)) {
+      "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+      "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+      "next", "skip" -> KeyEvent.KEYCODE_MEDIA_NEXT
+      "previous", "back" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+      "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
+      else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+    }
+    val audio = context.getSystemService(AudioManager::class.java)
+      ?: return failure("controlMedia", "audio_service_unavailable")
+    audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+    audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    return success("controlMedia") { put("mediaAction", rawAction) }
+  }
+
+  suspend fun setVolume(percent: Int): JSONObject {
+    val audio = context.getSystemService(AudioManager::class.java)
+      ?: return failure("setVolume", "audio_service_unavailable")
+    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+    val index = (percent.coerceIn(0, 100) / 100f * max).roundToInt().coerceIn(0, max)
+    audio.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
+    return success("setVolume") { put("level", (index * 100f / max).roundToInt()) }
+  }
+
+  suspend fun setBrightness(percent: Int): JSONObject {
+    if (!Settings.System.canWrite(context)) {
+      val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri())
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      launch(intent)
+      return failure("setBrightness", "write_settings_required")
+    }
+    val value = (percent.coerceIn(0, 100) / 100f * 255).roundToInt()
+    return try {
+      Settings.System.putInt(
+        context.contentResolver,
+        Settings.System.SCREEN_BRIGHTNESS_MODE,
+        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+      )
+      val saved = Settings.System.putInt(
+        context.contentResolver,
+        Settings.System.SCREEN_BRIGHTNESS,
+        value.coerceIn(1, 255)
+      )
+      if (saved) success("setBrightness") { put("level", percent.coerceIn(0, 100)) }
+      else failure("setBrightness", "brightness_write_failed")
+    } catch (error: Exception) {
+      Log.e(TAG, "Brightness change failed", error)
+      failure("setBrightness", "brightness_write_failed")
+    }
+  }
+
+  suspend fun setFlashlight(on: Boolean): JSONObject {
+    val manager = context.getSystemService(CameraManager::class.java)
+      ?: return failure("setFlashlight", "camera_service_unavailable")
+    return try {
+      val cameraId = manager.cameraIdList.firstOrNull { id ->
+        manager.getCameraCharacteristics(id)
+          .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+      } ?: return failure("setFlashlight", "no_flashlight")
+      manager.setTorchMode(cameraId, on)
+      success("setFlashlight") { put("on", on) }
+    } catch (error: Exception) {
+      Log.e(TAG, "Torch change failed", error)
+      failure("setFlashlight", "flashlight_unavailable")
     }
   }
 

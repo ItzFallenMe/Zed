@@ -2,6 +2,7 @@ package com.zed.assistant.ui
 
 import android.content.Context
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,13 +44,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zed.assistant.R
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.ui.components.GlassCard
@@ -62,8 +66,8 @@ import com.zed.assistant.viewmodel.MainViewModel
 import java.util.Calendar
 
 /**
- * Home screen in the reference liquid-glass layout: identity header, particle
- * orb stage, live status, uplink card, and three quick actions.
+ * Home screen: identity header, the live robot-head stage, session status,
+ * transport card, and three quick actions.
  */
 @Composable
 fun ZedHomeScreen(
@@ -79,7 +83,7 @@ fun ZedHomeScreen(
   val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
   val isActive by viewModel.isActive.collectAsStateWithLifecycle()
   val turns by viewModel.chatTurns.collectAsStateWithLifecycle()
-  val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+  val avatarState by viewModel.avatarState.collectAsStateWithLifecycle()
   var showLanguageInfo by rememberSaveable { mutableStateOf(false) }
 
   val prefs = remember {
@@ -112,10 +116,8 @@ fun ZedHomeScreen(
         contentAlignment = Alignment.Center
       ) {
         OrbHalo(modifier = Modifier.fillMaxSize())
-        ZedOrbView(
-          state = state,
-          level = level,
-          themeKey = themeMode.orbThemeKey,
+        ZedRobotAvatar(
+          state = avatarState,
           onTap = { viewModel.toggleSession() },
           onLongPress = { viewModel.interrupt() },
           modifier = Modifier.fillMaxSize()
@@ -225,7 +227,18 @@ private fun HomeHeader(
       modifier = Modifier.align(Alignment.Center),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
-      ZedWordmark()
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+          painter = painterResource(R.drawable.zed_applogo),
+          contentDescription = null,
+          contentScale = ContentScale.Crop,
+          modifier = Modifier
+            .size(30.dp)
+            .clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        ZedWordmark()
+      }
       Text(
         text = if (userName.isBlank()) greeting else "$greeting, $userName",
         color = palette.textSecondary,

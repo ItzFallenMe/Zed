@@ -61,8 +61,8 @@ import com.zed.assistant.ui.theme.LocalZedPalette
 import com.zed.assistant.viewmodel.MainViewModel
 
 /**
- * Conversation screen matching the reference chat layout: identity header,
- * live turn bubbles, and a glass composer with persona/transport chips.
+ * Conversation screen: identity header, live turn bubbles, and a composer
+ * shared by spoken and typed turns.
  */
 @Composable
 fun ZedChatScreen(

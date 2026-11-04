@@ -4,20 +4,48 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.zed.assistant.BuildConfig
 import com.zed.assistant.ZedSessionService
+import com.zed.assistant.ZedWakeWordService
+import com.zed.assistant.automation.ZedAccessibilityService
+import com.zed.assistant.audio.CreatorChallengeSession
+import com.zed.assistant.audio.VoskModelManager
+import com.zed.assistant.data.ChatHistoryStore
+import com.zed.assistant.data.CreatorAuth
+import com.zed.assistant.data.CreatorGate
+import com.zed.assistant.data.MemoryStore
+import com.zed.assistant.data.WeatherRepository
+import com.zed.assistant.data.ZedPreferences
+import com.zed.assistant.data.ZedVoiceProfiles
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
+import com.zed.assistant.overlay.ZedOverlayService
+import com.zed.assistant.ui.theme.ZedThemeMode
+import com.zed.assistant.ui.theme.ZedThemeRepository
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
+
+/** UI state for the local creator-code gate. */
+data class CreatorPrompt(
+  val listening: Boolean = false,
+  val voice: Boolean = false,
+  val error: String? = null,
+  val lockedSeconds: Long = 0L
+)
 
 /**
  * Single owner of a Zed conversation: permission handling, the Live session,
@@ -59,6 +87,16 @@ object ZedEngine {
   val level = MutableStateFlow(0f)
   val chatTurns = MutableStateFlow<List<ChatMessage>>(emptyList())
 
+  /** Persisted master-control status, verified locally by [CreatorAuth]. */
+  val creatorUnlocked = MutableStateFlow(false)
+  val creatorPrompt = MutableStateFlow<CreatorPrompt?>(null)
+
+  /**
+   * Robot-avatar state: idle, thinking, listening, speaking, searching,
+   * working, happy or error. The floating overlay and the home avatar render it.
+   */
+  val avatarState = MutableStateFlow("idle")
+
   // Internals -------------------------------------------------------------
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val toolScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -70,6 +108,13 @@ object ZedEngine {
   private var audioEngine: AudioEngine? = null
   private var actions: DeviceActions? = null
   private var client: GeminiLiveClient? = null
+
+  private var preferences: ZedPreferences? = null
+  private var history: ChatHistoryStore? = null
+  private var memory: MemoryStore? = null
+  private var weather: WeatherRepository? = null
+  private var avatarResetJob: Job? = null
+  private var creatorChallenge: CreatorChallengeSession? = null
 
   @Volatile
   private var manualStop = false
@@ -101,9 +146,23 @@ object ZedEngine {
     audioEngine = engine
     actions = DeviceActions(app, ContactsRepository(app))
 
+    val storedPreferences = ZedPreferences(app)
+    preferences = storedPreferences
+    history = ChatHistoryStore(app)
+    memory = MemoryStore(app)
+    weather = WeatherRepository(app)
+    creatorUnlocked.value = CreatorAuth.isUnlocked(app)
+
     scope.launch {
       engine.level.collect { level.value = it }
     }
+
+    scope.launch {
+      val saved = history?.recent(60).orEmpty()
+      if (saved.isNotEmpty()) chatTurns.value = saved
+    }
+
+    if (storedPreferences.wakeWordEnabled) VoskModelManager.init(app, scope)
 
     engine.onMicChunk = { chunk -> client?.sendAudio(chunk) }
 
@@ -140,10 +199,13 @@ object ZedEngine {
   fun start(context: Context) {
     initialize(context)
     if (isActive.value) return
+    if (creatorPrompt.value != null) {
+      status.value = "Finish creator verification first"
+      return
+    }
     val app = appContext ?: return
-    val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    val apiKey = resolveApiKey(prefs)
+    val apiKey = resolveApiKey()
     if (apiKey.isBlank()) {
       queuedText.clear()
       Log.w(TAG, "Cannot start: no Gemini API key configured")
@@ -187,13 +249,15 @@ object ZedEngine {
         status.value = "Session error"
         return@launch
       }
-      connect(apiKey, prefs, resume = false)
+      connect(apiKey, resume = false)
     }
   }
 
   fun stop() {
     Log.d(TAG, "Stopping session")
     manualStop = true
+    avatarResetJob?.cancel()
+    avatarState.value = "idle"
     pendingGoAwayReconnect = false
     handler.removeCallbacksAndMessages(null)
     teardown(keepError = false, stateAfter = AssistantState.IDLE)
@@ -209,6 +273,22 @@ object ZedEngine {
   fun sendText(context: Context, text: String) {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
+
+    // Creator verification is handled entirely on-device. The challenge phrase
+    // and the code are never forwarded to Gemini.
+    if (creatorPrompt.value != null) {
+      if (CreatorGate.normalizeCodeInput(trimmed) != null) {
+        verifyCreatorCode(trimmed)
+      } else {
+        status.value = "Finish creator verification first"
+      }
+      return
+    }
+    if (!creatorUnlocked.value && CreatorGate.isCreatorRequest(trimmed)) {
+      beginCreatorChallenge(voice = false)
+      return
+    }
+
     if (queuedText.size >= 20) {
       errorMessage.value = "Too many messages are queued. Wait for Zed to finish first."
       return
@@ -228,6 +308,7 @@ object ZedEngine {
     chatTurns.value = emptyList()
     userText.value = ""
     zedText.value = ""
+    history?.clear()
   }
 
   /** Long-press / explicit "stop talking" action. */
@@ -245,6 +326,7 @@ object ZedEngine {
   fun dismissError() {
     errorMessage.value = null
     if (!isActive.value && state.value == AssistantState.ERROR) {
+      avatarResetJob?.cancel()
       setState(AssistantState.IDLE)
       status.value = "Tap to talk"
     }
@@ -262,25 +344,33 @@ object ZedEngine {
     }, 1_500)
   }
 
-  fun hasApiKey(context: Context): Boolean {
-    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    return resolveApiKey(prefs).isNotBlank()
-  }
+  fun hasApiKey(context: Context): Boolean =
+    (preferences?.apiKey ?: ZedPreferences(context).apiKey).isNotBlank() ||
+      BuildConfig.GEMINI_API_KEY.isNotBlank()
 
   // ------------------------------------------------------------- connection
 
-  private fun connect(apiKey: String, prefs: SharedPreferences, resume: Boolean) {
+  private fun connect(apiKey: String, resume: Boolean) {
     if (!isActive.value) return
-    val model = prefs.getString(KEY_MODEL, DEFAULT_MODEL).orEmpty().ifBlank { DEFAULT_MODEL }
-    val voice = prefs.getString(KEY_VOICE, DEFAULT_VOICE).orEmpty().ifBlank { DEFAULT_VOICE }
-    val userName = prefs.getString(KEY_USER_NAME, "").orEmpty()
+    val app = appContext ?: return
+    val stored = preferences ?: ZedPreferences(app).also { preferences = it }
+    val model = stored.model.ifBlank { DEFAULT_MODEL }
+    val voiceProfile = ZedVoiceProfiles.resolve(stored.voicePreset, stored.voice)
+    val voice = voiceProfile.geminiVoice.ifBlank { DEFAULT_VOICE }
+    val userName = stored.userName
+    val remembered = memory?.promptContext().orEmpty()
     val handle = if (resume) sessionHandle else null
 
     client?.close()
     val newClient = GeminiLiveClient(
       apiKey = apiKey,
       model = model,
-      systemInstruction = ZedPersona.systemInstruction(userName),
+      systemInstruction = ZedPersona.systemInstruction(
+        userName = userName,
+        memories = remembered,
+        isCreator = creatorUnlocked.value,
+        voiceStyle = voiceProfile.style
+      ),
       voiceName = voice,
       sessionHandle = handle,
       listener = listener
@@ -293,9 +383,7 @@ object ZedEngine {
   }
 
   private fun resumeSession() {
-    val app = appContext ?: return
-    val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    val apiKey = resolveApiKey(prefs)
+    val apiKey = resolveApiKey()
 
     if (sessionHandle.isNullOrBlank() || apiKey.isBlank()) {
       errorMessage.value = "The Gemini session ended. Tap to reconnect."
@@ -317,7 +405,7 @@ object ZedEngine {
     setState(AssistantState.CONNECTING)
     status.value = "Reconnecting…"
     handler.postDelayed({
-      if (isActive.value) connect(apiKey, prefs, resume = true)
+      if (isActive.value) connect(apiKey, resume = true)
     }, 600)
   }
 
@@ -377,6 +465,11 @@ object ZedEngine {
     override fun onUserTranscript(text: String, isFinal: Boolean) {
       userText.value = text
       if (text.isNotBlank()) lastSubmittedText = text
+      if (isFinal && creatorPrompt.value == null && !creatorUnlocked.value &&
+        CreatorGate.isCreatorRequest(text)
+      ) {
+        beginCreatorChallenge(voice = true)
+      }
     }
 
     override fun onZedTranscript(text: String) {
@@ -394,6 +487,8 @@ object ZedEngine {
           ChatMessage(ChatMessage.Role.USER, completedUserText),
           ChatMessage(ChatMessage.Role.ASSISTANT, zedTranscript)
         )
+        history?.append(ChatMessage.Role.USER, completedUserText)
+        history?.append(ChatMessage.Role.ASSISTANT, zedTranscript)
       }
       lastSubmittedText = null
       turnFinished = true
@@ -470,6 +565,8 @@ object ZedEngine {
       val responses = mutableListOf<Pair<ToolCallRequest, JSONObject>>()
       for (call in calls) {
         Log.d(TAG, "Executing tool ${call.name} args=${call.args}")
+        avatarResetJob?.cancel()
+        avatarState.value = if (call.name in SEARCH_TOOLS) "searching" else "working"
         val result = try {
           executeTool(executor, call)
         } catch (error: Exception) {
@@ -478,6 +575,7 @@ object ZedEngine {
         }
         Log.d(TAG, "Tool ${call.name} result=$result")
         actionNote.value = describeAction(result)
+        if (result.optBoolean("success")) flashAvatar("happy", 2_400) else flashAvatar("error", 2_800)
         responses.add(call to result)
       }
       client?.sendToolResponse(responses)
@@ -489,7 +587,7 @@ object ZedEngine {
       "openWhatsApp" -> executor.openWhatsApp()
       "openApp" -> {
         val app = call.args.optString("appName").ifBlank { call.args.optString("app") }
-        if (app.isBlank()) toolFailure("openApp", "missing_app_name") else executor.openApp(app)
+        if (app.isBlank()) toolFailure("openApp", "missing_app_name") else executor.openAnyApp(app)
       }
       "openUrl" -> {
         val url = call.args.optString("url")
@@ -503,9 +601,160 @@ object ZedEngine {
         val name = call.args.optString("contactName")
         if (name.isBlank()) toolFailure("callContact", "invalid_contact_name") else executor.callContact(name)
       }
+      "sendWhatsAppMessage" -> {
+        val name = call.args.optString("contactName")
+        val message = call.args.optString("message")
+        if (name.isBlank() || message.isBlank()) {
+          toolFailure(call.name, "missing_contact_or_message")
+        } else {
+          executor.sendWhatsAppMessage(name, message)
+        }
+      }
+      "searchYouTube" -> {
+        val query = call.args.optString("query")
+        if (query.isBlank()) toolFailure(call.name, "empty_query") else executor.searchYouTube(query)
+      }
+      "controlMedia" -> executor.controlMedia(call.args.optString("mediaAction", "play_pause"))
+      "setVolume" -> executor.setVolume(call.args.optInt("level", 50))
+      "setBrightness" -> executor.setBrightness(call.args.optInt("level", 50))
+      "setFlashlight" -> executor.setFlashlight(call.args.optBoolean("on", false))
+      "inspectScreen" -> ZedAccessibilityService.screenSnapshot()
+      "clickElement" -> {
+        val target = call.args.optString("target")
+        if (target.isBlank()) toolFailure(call.name, "missing_target") else ZedAccessibilityService.click(target)
+      }
+      "typeText" -> {
+        val text = call.args.optString("text")
+        if (text.isBlank()) {
+          toolFailure(call.name, "missing_text")
+        } else {
+          ZedAccessibilityService.type(text, call.args.optString("target").ifBlank { null })
+        }
+      }
+      "scrollScreen" -> ZedAccessibilityService.scroll(call.args.optString("direction", "down"))
+      "pressKey" -> ZedAccessibilityService.press(call.args.optString("key", "back"))
+      "creatorControl" -> executeCreatorControl(call.args.optString("action"))
+      "lookAtScreen" -> {
+        val jpeg = ZedAccessibilityService.screenshotJpeg()
+        if (jpeg == null) {
+          toolFailure(call.name, "screen_capture_unavailable")
+        } else {
+          client?.sendVideoFrame(jpeg)
+          JSONObject()
+            .put("success", true)
+            .put("action", call.name)
+            .put("note", "A screenshot of the current screen is attached to the conversation.")
+        }
+      }
+      "rememberFact" -> {
+        val fact = call.args.optString("fact")
+        val saved = if (fact.isBlank()) null else memory?.add(fact)
+        if (saved == null) toolFailure(call.name, "empty_fact")
+        else JSONObject()
+          .put("success", true)
+          .put("action", call.name)
+          .put("remembered", saved.text)
+          .put("category", saved.category)
+      }
+      "forgetMemory" -> {
+        val query = call.args.optString("query")
+        if (query.isBlank()) {
+          toolFailure(call.name, "missing_query")
+        } else {
+          JSONObject()
+            .put("success", true)
+            .put("action", call.name)
+            .put("deleted", memory?.deleteByKeyword(query) ?: 0)
+        }
+      }
+      "recallMemories" -> {
+        val entries = JSONArray()
+        memory?.all(50)?.forEach { item ->
+          entries.put(JSONObject().put("fact", item.text).put("category", item.category))
+        }
+        JSONObject()
+          .put("success", true)
+          .put("action", call.name)
+          .put("memories", entries)
+      }
+      "getWeather" -> weather?.current() ?: toolFailure(call.name, "weather_unavailable")
       else -> toolFailure(call.name, "unsupported_tool")
     }
   }
+
+  private fun executeCreatorControl(rawAction: String): JSONObject {
+    if (!creatorUnlocked.value) return toolFailure("creatorControl", "creator_access_required")
+    val app = appContext ?: return toolFailure("creatorControl", "not_initialized")
+    val prefs = preferences ?: ZedPreferences(app).also { preferences = it }
+    val action = rawAction.trim().lowercase()
+
+    return when (action) {
+      "lock_screen" -> ZedAccessibilityService.press("lock_screen")
+      "go_home" -> ZedAccessibilityService.press("home")
+      "go_back" -> ZedAccessibilityService.press("back")
+      "open_recents" -> ZedAccessibilityService.press("recents")
+      "open_notifications" -> ZedAccessibilityService.press("notifications")
+      "open_quick_settings" -> ZedAccessibilityService.press("quick_settings")
+      "clear_memory" -> {
+        memory?.clear()
+        creatorSuccess(action, "All saved memories cleared")
+      }
+      "clear_conversation" -> {
+        clearConversation()
+        creatorSuccess(action, "Conversation cleared")
+      }
+      "enable_wake_word" -> {
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) !=
+          PackageManager.PERMISSION_GRANTED
+        ) {
+          return toolFailure("creatorControl", "microphone_permission_required")
+        }
+        prefs.wakeWordEnabled = true
+        ZedWakeWordService.sync(app)
+        creatorSuccess(action, "Wake word enabled")
+      }
+      "disable_wake_word" -> {
+        prefs.wakeWordEnabled = false
+        ZedWakeWordService.sync(app)
+        creatorSuccess(action, "Wake word disabled")
+      }
+      "enable_overlay" -> {
+        if (!Settings.canDrawOverlays(app)) {
+          return toolFailure("creatorControl", "overlay_permission_required")
+        }
+        prefs.overlayEnabled = true
+        ZedOverlayService.sync(app)
+        creatorSuccess(action, "Floating avatar enabled")
+      }
+      "disable_overlay" -> {
+        prefs.overlayEnabled = false
+        ZedOverlayService.sync(app)
+        creatorSuccess(action, "Floating avatar disabled")
+      }
+      "set_dark_theme" -> {
+        ZedThemeRepository.set(app, ZedThemeMode.DARK)
+        creatorSuccess(action, "Obsidian black theme active")
+      }
+      "set_light_theme" -> {
+        ZedThemeRepository.set(app, ZedThemeMode.LIGHT)
+        creatorSuccess(action, "Light theme active")
+      }
+      "lock_creator" -> {
+        CreatorAuth.lock(app)
+        creatorUnlocked.value = false
+        creatorPrompt.value = null
+        creatorSuccess(action, "Creator mode locked")
+      }
+      else -> toolFailure("creatorControl", "unsupported_action")
+    }
+  }
+
+  private fun creatorSuccess(action: String, note: String): JSONObject =
+    JSONObject()
+      .put("success", true)
+      .put("action", "creatorControl")
+      .put("control", action)
+      .put("note", note)
 
   private fun toolFailure(action: String, error: String): JSONObject =
     JSONObject().put("success", false).put("action", action).put("error", error)
@@ -527,6 +776,23 @@ object ZedEngine {
         } else {
           "Dialer opened for ${result.optString("contactName")}"
         }
+        "sendWhatsAppMessage" -> "WhatsApp message ready for ${result.optString("contactName")}"
+        "searchYouTube" -> "Searching YouTube for ${result.optString("query")}"
+        "controlMedia" -> "Media ${result.optString("mediaAction")}"
+        "setVolume" -> "Volume set to ${result.optInt("level")}%"
+        "setBrightness" -> "Brightness set to ${result.optInt("level")}%"
+        "setFlashlight" -> if (result.optBoolean("on")) "Flashlight on" else "Flashlight off"
+        "inspectScreen" -> "Read the current screen"
+        "clickElement" -> "Tapped ${result.optString("target")}"
+        "typeText" -> "Text entered"
+        "scrollScreen" -> "Scrolled ${result.optString("direction")}"
+        "pressKey" -> "Pressed ${result.optString("key")}"
+        "lookAtScreen" -> "Took a look at your screen"
+        "rememberFact" -> "Saved to memory"
+        "forgetMemory" -> "Memory updated"
+        "recallMemories" -> "Recalled your saved facts"
+        "getWeather" -> "${result.optString("summary")}"
+        "creatorControl" -> result.optString("note").ifBlank { "Master control" }
         else -> "Action completed"
       }
     } else {
@@ -540,8 +806,167 @@ object ZedEngine {
         "invalid_phone_number" -> "That phone number doesn't look valid"
         "invalid_url" -> "That URL doesn't look valid"
         "no_dialer_available", "no_app_can_open_url" -> "This phone can't open that"
+        "accessibility_service_disabled" -> "Enable Zed's accessibility service first"
+        "element_not_found" -> "I couldn't see that on screen"
+        "no_editable_field" -> "There is no text field on screen"
+        "screen_capture_unavailable" -> "Screen capture isn't available"
+        "write_settings_required" -> "Allow Zed to change system settings"
+        "location_permission_denied" -> "Location permission is needed for weather"
+        "location_unavailable" -> "I can't get a location fix right now"
+        "weather_service_unavailable" -> "The weather service is unreachable"
+        "no_flashlight" -> "This phone has no flashlight"
+        "empty_query", "empty_message", "empty_fact", "missing_query", "missing_text" ->
+          "Something was missing from that request"
+        "creator_access_required" -> "Creator verification is required"
         else -> "That action didn't work"
       }
+    }
+  }
+
+  private fun resolveApiKey(): String {
+    val stored = preferences?.apiKey ?: appContext?.let { ZedPreferences(it).apiKey }.orEmpty()
+    return stored.ifBlank { BuildConfig.GEMINI_API_KEY.trim() }
+  }
+
+  // ------------------------------------------------------- creator protocol
+
+  /** Opens the local code gate. [voice] starts a one-shot speech prompt. */
+  fun requestCreatorChallenge(voice: Boolean = false) {
+    if (creatorUnlocked.value) {
+      status.value = "Master control is already active"
+      return
+    }
+    beginCreatorChallenge(voice = voice)
+  }
+
+  private fun beginCreatorChallenge(voice: Boolean) {
+    if (creatorPrompt.value != null || creatorUnlocked.value) return
+    if (isActive.value) stop()
+    creatorPrompt.value = CreatorPrompt(listening = voice, voice = voice)
+    status.value = if (voice) "Say your creator code" else "Enter your creator code"
+    flashAvatar("thinking", 8_000)
+    if (voice) startCreatorVoice()
+  }
+
+  /** Re-opens the mic after a failed or unavailable voice attempt. */
+  fun retryCreatorVoice() {
+    if (creatorUnlocked.value) return
+    if (creatorPrompt.value == null) return
+    creatorPrompt.value = CreatorPrompt(listening = true, voice = true)
+    status.value = "Say your creator code"
+    startCreatorVoice()
+  }
+
+  fun cancelCreatorChallenge() {
+    creatorChallenge?.stop()
+    creatorChallenge = null
+    creatorPrompt.value = null
+    status.value = "Tap to talk"
+    if (!isActive.value) setState(AssistantState.IDLE)
+  }
+
+  fun verifyCreatorCode(rawCode: String) {
+    val app = appContext ?: return
+    when (val result = CreatorAuth.verify(app, rawCode)) {
+      CreatorAuth.Result.Success -> {
+        creatorChallenge?.stop()
+        creatorChallenge = null
+        creatorUnlocked.value = true
+        creatorPrompt.value = null
+        status.value = "Master control active. Welcome back, Creator."
+        actionNote.value = "Creator verified"
+        flashAvatar("happy", 5_000)
+      }
+
+      CreatorAuth.Result.InvalidFormat -> {
+        creatorPrompt.value = CreatorPrompt(
+          listening = false,
+          voice = creatorPrompt.value?.voice == true,
+          error = "Enter the ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digit code."
+        )
+      }
+
+      is CreatorAuth.Result.Failure -> {
+        val error = if (result.lockedSeconds > 0L) {
+          "Too many attempts. Try again in ${result.lockedSeconds} seconds."
+        } else {
+          "That code didn't match. ${result.attemptsLeft} attempts left."
+        }
+        creatorPrompt.value = CreatorPrompt(
+          listening = false,
+          voice = creatorPrompt.value?.voice == true,
+          error = error,
+          lockedSeconds = result.lockedSeconds
+        )
+        flashAvatar("error", 3_000)
+      }
+    }
+  }
+
+  /** Changes the code after master control is already active. */
+  fun changeCreatorCode(newCode: String): Boolean {
+    if (!creatorUnlocked.value) return false
+    val app = appContext ?: return false
+    val saved = CreatorAuth.setCode(app, newCode)
+    if (saved) {
+      status.value = "Creator code updated"
+      actionNote.value = "Creator code changed"
+    }
+    return saved
+  }
+
+  fun lockCreator() {
+    val app = appContext ?: return
+    CreatorAuth.lock(app)
+    creatorUnlocked.value = false
+    creatorPrompt.value = null
+    creatorChallenge?.stop()
+    creatorChallenge = null
+    if (isActive.value) stop()
+    status.value = "Creator mode locked"
+    actionNote.value = "Master control revoked"
+    flashAvatar("idle", 2_000)
+  }
+
+  private fun startCreatorVoice() {
+    val app = appContext ?: return
+    creatorChallenge?.stop()
+    creatorChallenge = CreatorChallengeSession(
+      context = app,
+      onHeard = { heard -> verifyCreatorCode(heard) },
+      onUnavailable = { message ->
+        creatorPrompt.value = creatorPrompt.value?.copy(listening = false, error = message)
+        flashAvatar("error", 2_500)
+      },
+      onListening = {
+        creatorPrompt.value = creatorPrompt.value?.copy(listening = true, error = null)
+      }
+    )
+    creatorChallenge?.start("Creator code?")
+  }
+
+  private val SEARCH_TOOLS = setOf("searchYouTube", "inspectScreen", "lookAtScreen", "getWeather")
+
+  private fun defaultAvatarState(): String = when (state.value) {
+    AssistantState.IDLE -> "idle"
+    AssistantState.CONNECTING -> "thinking"
+    AssistantState.LISTENING -> "listening"
+    AssistantState.SPEAKING -> "speaking"
+    AssistantState.ERROR -> "error"
+  }
+
+  private fun syncAvatar() {
+    if (avatarResetJob?.isActive == true) return
+    avatarState.value = defaultAvatarState()
+  }
+
+  /** Shows a transient avatar expression (happy/error) before returning to the current activity. */
+  private fun flashAvatar(state: String, holdMs: Long) {
+    avatarResetJob?.cancel()
+    avatarState.value = state
+    avatarResetJob = scope.launch {
+      delay(holdMs)
+      avatarState.value = defaultAvatarState()
     }
   }
 
@@ -583,12 +1008,7 @@ object ZedEngine {
   private fun setState(newState: AssistantState) {
     if (state.value != newState) Log.d(TAG, "State ${state.value} -> $newState")
     state.value = newState
-  }
-
-  private fun resolveApiKey(prefs: SharedPreferences): String {
-    val stored = prefs.getString(KEY_API_KEY, "").orEmpty().trim()
-    if (stored.isNotEmpty()) return stored
-    return BuildConfig.GEMINI_API_KEY.trim()
+    syncAvatar()
   }
 
   private fun friendlyError(detail: String): String {

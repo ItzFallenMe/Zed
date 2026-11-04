@@ -5,28 +5,21 @@ import androidx.compose.ui.graphics.Color
 /**
  * Zed's liquid-glass design tokens.
  *
- * The four modes mirror the reference design: Pearl (light), Obsidian (dark),
- * Ruby (red), and Sunset. Components read the active palette through
- * [LocalZedPalette] so a theme change recomposes the whole UI without touching
- * the assistant engine.
+ * Four modes share one token contract: Pearl (light), Obsidian (true black),
+ * Ruby (deep red), and Sunset (warm light). Components read the active palette
+ * through [LocalZedPalette] so a theme change recomposes the whole UI without
+ * touching the assistant engine.
  */
 enum class ZedThemeMode(val key: String, val label: String, val isLight: Boolean) {
   LIGHT("light", "Pearl light", true),
-  DARK("dark", "Obsidian dark", false),
+  DARK("dark", "Obsidian black", false),
   RED("red", "Ruby red", false),
   SUNSET("sunset", "Sunset glass", true);
 
-  val orbThemeKey: String
-    get() = when (this) {
-      LIGHT -> "light"
-      DARK -> "dark"
-      RED -> "red"
-      SUNSET -> "sunset"
-    }
 
   companion object {
     fun fromKey(key: String?): ZedThemeMode =
-      entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: LIGHT
+      entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: DARK
   }
 }
 
@@ -86,29 +79,29 @@ val PearlPalette = ZedPalette(
 
 val ObsidianPalette = ZedPalette(
   isLight = false,
-  background = Color(0xFF070914),
-  backgroundAlt = Color(0xFF0D1126),
-  card = Color(0xCC141B3D),
-  cardGlassStart = Color(0xCC1B2654),
-  cardGlassEnd = Color(0x990F1733),
-  cardBorder = Color(0x665B8CFF),
-  dockStart = Color(0xE6172048),
-  dockEnd = Color(0xCC0B1028),
-  dockBorder = Color(0x665B8CFF),
-  textPrimary = Color(0xFFF8FAFC),
-  textSecondary = Color(0xFF94A3B8),
-  textMuted = Color(0xFF8B9AC4),
-  accent = Color(0xFF5B8CFF),
-  accentSecondary = Color(0xFFA78BFA),
-  accentTertiary = Color(0xFF22D3EE),
-  accentSoft = Color(0xFF1E2858),
-  success = Color(0xFF34D399),
-  error = Color(0xFFFB7185),
+  background = Color(0xFF000000),
+  backgroundAlt = Color(0xFF0A0A0A),
+  card = Color(0xE6121212),
+  cardGlassStart = Color(0xF0181818),
+  cardGlassEnd = Color(0xE00C0C0C),
+  cardBorder = Color(0x2EFFFFFF),
+  dockStart = Color(0xF5161616),
+  dockEnd = Color(0xF0090909),
+  dockBorder = Color(0x2EFFFFFF),
+  textPrimary = Color(0xFFF7F7F7),
+  textSecondary = Color(0xFFB4B4B4),
+  textMuted = Color(0xFF8A8A8A),
+  accent = Color(0xFFF2F2F2),
+  accentSecondary = Color(0xFFBDBDBD),
+  accentTertiary = Color(0xFF8A8A8A),
+  accentSoft = Color(0xFF1F1F1F),
+  success = Color(0xFF4ADE80),
+  error = Color(0xFFF87171),
   warning = Color(0xFFFBBF24),
-  glowOne = Color(0x335B8CFF),
-  glowTwo = Color(0x33A78BFA),
-  glowThree = Color(0x2622D3EE),
-  specular = Color(0xFFA5C8FF)
+  glowOne = Color(0x22FFFFFF),
+  glowTwo = Color(0x1AFFFFFF),
+  glowThree = Color(0x12FFFFFF),
+  specular = Color(0xFF050505)
 )
 
 val RubyPalette = ZedPalette(

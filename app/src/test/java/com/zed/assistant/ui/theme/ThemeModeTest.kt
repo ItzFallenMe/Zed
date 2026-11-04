@@ -1,5 +1,6 @@
 package com.zed.assistant.ui.theme
 
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,11 +9,11 @@ import org.junit.Test
 class ThemeModeTest {
 
   @Test
-  fun fromKeyIsCaseInsensitiveAndFallsBackToPearl() {
+  fun fromKeyIsCaseInsensitiveAndFallsBackToObsidian() {
     assertEquals(ZedThemeMode.DARK, ZedThemeMode.fromKey("dark"))
     assertEquals(ZedThemeMode.SUNSET, ZedThemeMode.fromKey("SUNSET"))
-    assertEquals(ZedThemeMode.LIGHT, ZedThemeMode.fromKey("unknown"))
-    assertEquals(ZedThemeMode.LIGHT, ZedThemeMode.fromKey(null))
+    assertEquals(ZedThemeMode.DARK, ZedThemeMode.fromKey("unknown"))
+    assertEquals(ZedThemeMode.DARK, ZedThemeMode.fromKey(null))
   }
 
   @Test
@@ -28,10 +29,7 @@ class ThemeModeTest {
   }
 
   @Test
-  fun orbThemeKeysMatchPaletteModes() {
-    assertEquals("light", ZedThemeMode.LIGHT.orbThemeKey)
-    assertEquals("dark", ZedThemeMode.DARK.orbThemeKey)
-    assertEquals("red", ZedThemeMode.RED.orbThemeKey)
-    assertEquals("sunset", ZedThemeMode.SUNSET.orbThemeKey)
+  fun obsidianIsTrueBlack() {
+    assertEquals(Color(0xFF000000), ZedThemeMode.DARK.palette().background)
   }
 }

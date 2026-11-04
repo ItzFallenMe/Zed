@@ -1,8 +1,9 @@
 package com.zed.assistant.ui
 
 import android.annotation.SuppressLint
-import android.graphics.Color as AndroidColor
+import android.graphics.Color
 import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -26,23 +27,19 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.zed.assistant.model.AssistantState
-import kotlinx.coroutines.delay
 
 /**
- * The signature Zed particle orb.
+ * The robot-head avatar. A locally bundled canvas renderer (robot-heads, MIT)
+ * shows the face for the current agent state: idle, thinking, listening,
+ * speaking, searching, working, happy or error.
  *
- * A local, network-free WebView renders a Three.js particle volume. The
- * orchestrator owns all assistant state; this view only paints it. Touch
- * gestures are detected natively so a tap still starts a session even while
- * the orb canvas is being dragged.
+ * The WebView cannot reach the network. Touch is detected natively so a tap
+ * still starts a session while the canvas can also follow the pointer.
  */
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
-fun ZedOrbView(
-  state: AssistantState,
-  level: Float,
-  themeKey: String,
+fun ZedRobotAvatar(
+  state: String,
   onTap: () -> Unit,
   onLongPress: () -> Unit,
   modifier: Modifier = Modifier
@@ -51,20 +48,20 @@ fun ZedOrbView(
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   var webView by remember { mutableStateOf<WebView?>(null) }
   var pageReady by remember { mutableStateOf(false) }
+  var pageError by remember { mutableStateOf(false) }
 
   val currentOnTap by rememberUpdatedState(onTap)
   val currentOnLongPress by rememberUpdatedState(onLongPress)
-  val currentLevel by rememberUpdatedState(level)
   val gestureDetector = remember(context) {
     GestureDetector(
       context,
       object : GestureDetector.SimpleOnGestureListener() {
-        override fun onSingleTapConfirmed(event: android.view.MotionEvent): Boolean {
+        override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
           currentOnTap()
           return true
         }
 
-        override fun onLongPress(event: android.view.MotionEvent) {
+        override fun onLongPress(event: MotionEvent) {
           currentOnLongPress()
         }
       }
@@ -73,21 +70,20 @@ fun ZedOrbView(
 
   Box(
     modifier = modifier.semantics {
-      contentDescription = "Zed orb. Tap to start or stop voice. Long press to interrupt."
+      contentDescription = "Zed robot avatar. Tap to start or stop voice. Long press to interrupt."
     }
   ) {
     AndroidView(
       modifier = Modifier.fillMaxSize(),
       factory = { viewContext ->
         WebView(viewContext).apply {
-          setBackgroundColor(AndroidColor.TRANSPARENT)
+          setBackgroundColor(Color.TRANSPARENT)
           setLayerType(View.LAYER_TYPE_HARDWARE, null)
           isVerticalScrollBarEnabled = false
           isHorizontalScrollBarEnabled = false
           overScrollMode = View.OVER_SCROLL_NEVER
           isLongClickable = false
           setOnLongClickListener { true }
-
           settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -97,11 +93,19 @@ fun ZedOrbView(
             cacheMode = WebSettings.LOAD_NO_CACHE
             mediaPlaybackRequiresUserGesture = true
           }
-
           webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
               super.onPageFinished(view, url)
               pageReady = true
+            }
+
+            override fun onReceivedError(
+              view: WebView?,
+              request: WebResourceRequest?,
+              error: android.webkit.WebResourceError?
+            ) {
+              super.onReceivedError(view, request, error)
+              if (request?.isForMainFrame == true) pageError = true
             }
 
             override fun shouldOverrideUrlLoading(
@@ -109,13 +113,11 @@ fun ZedOrbView(
               request: WebResourceRequest?
             ): Boolean = request?.url?.scheme != "file"
           }
-
-          setOnTouchListener { view, event ->
+          setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
-            view.onTouchEvent(event)
+            false
           }
-
-          loadUrl("file:///android_asset/orb.html?embedded=1")
+          loadUrl("file:///android_asset/robot-head/avatar.html")
           webView = this
         }
       },
@@ -154,31 +156,11 @@ fun ZedOrbView(
     }
   }
 
-  LaunchedEffect(state, pageReady, themeKey) {
+  LaunchedEffect(state, pageReady) {
     if (!pageReady) return@LaunchedEffect
-    val stateName = when (state) {
-      AssistantState.IDLE, AssistantState.ERROR -> "idle"
-      AssistantState.CONNECTING -> "thinking"
-      AssistantState.LISTENING -> "listening"
-      AssistantState.SPEAKING -> "speaking"
-    }
     webView?.evaluateJavascript(
-      "window.ZedOrb && window.ZedOrb.setTheme('$themeKey');" +
-        "window.ZedOrb && window.ZedOrb.setState('$stateName');",
+      "window.setRobotState && window.setRobotState('${state.filter { it.isLetter() }}');",
       null
     )
-  }
-
-  LaunchedEffect(webView, pageReady) {
-    if (!pageReady) return@LaunchedEffect
-    while (true) {
-      delay(80)
-      val amplitude = currentLevel.coerceIn(0f, 1f)
-      webView?.evaluateJavascript(
-        "window.ZedOrb && window.ZedOrb.setExternalAudio(" +
-          "$amplitude,${amplitude * 0.85f},${amplitude * 0.55f});",
-        null
-      )
-    }
   }
 }

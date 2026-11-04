@@ -142,6 +142,26 @@ class GeminiLiveClient(
     })
   }
 
+  /** One still frame from the accessibility screenshot API, for visual grounding. */
+  fun sendVideoFrame(jpeg: ByteArray) {
+    if (jpeg.isEmpty()) return
+    val socket = webSocket
+    if (socket == null || !setupComplete) {
+      Log.w(TAG, "Cannot send a screen frame before the session is ready")
+      return
+    }
+    val payload = JSONObject().put(
+      "realtimeInput",
+      JSONObject().put(
+        "video",
+        JSONObject()
+          .put("mimeType", "image/jpeg")
+          .put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+      )
+    )
+    if (!socket.send(payload.toString())) Log.w(TAG, "Screen frame could not be sent")
+  }
+
   fun sendAudio(pcm: ByteArray) {
     if (pcm.isEmpty()) return
     val socket = webSocket
@@ -294,13 +314,12 @@ class GeminiLiveClient(
     declarations.put(
       functionDeclaration(
         name = "openApp",
-        description = "Open one of the allowlisted apps installed on this phone. Use for requests such as open YouTube, Instagram, Maps or Chrome, in any language.",
+        description = "Open any installed app by its visible name. Use for requests such as open YouTube, Instagram, Maps, Chrome or a game, in any language. If several apps match, the result lists candidates and you must ask which one.",
         properties = JSONObject().put(
           "appName",
           JSONObject()
             .put("type", "STRING")
-            .put("description", "App to open.")
-            .put("enum", JSONArray(DeviceActions.supportedAppNames))
+            .put("description", "Visible app name the user said, for example YouTube or Instagram.")
         ),
         required = JSONArray().put("appName")
       )
@@ -345,6 +364,211 @@ class GeminiLiveClient(
             .put("description", "Name of the contact as the user said it.")
         ),
         required = JSONArray().put("contactName")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "sendWhatsAppMessage",
+        description = "Open a WhatsApp chat with a saved contact and prefill a message. The user still taps send; never claim the message was delivered.",
+        properties = JSONObject()
+          .put("contactName", JSONObject().put("type", "STRING").put("description", "Saved contact name."))
+          .put("message", JSONObject().put("type", "STRING").put("description", "Message text to prefill.")),
+        required = JSONArray().put("contactName").put("message")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "searchYouTube",
+        description = "Search YouTube for a video, song or topic and open the results.",
+        properties = JSONObject().put(
+          "query",
+          JSONObject().put("type", "STRING").put("description", "Search query as the user said it.")
+        ),
+        required = JSONArray().put("query")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "controlMedia",
+        description = "Play, pause, skip or stop the media that is currently playing on the phone.",
+        properties = JSONObject().put(
+          "mediaAction",
+          JSONObject()
+            .put("type", "STRING")
+            .put("description", "Media command.")
+            .put("enum", JSONArray(listOf("play", "pause", "play_pause", "next", "previous", "stop")))
+        ),
+        required = JSONArray().put("mediaAction")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "setVolume",
+        description = "Set the phone's media volume to a percentage between 0 and 100.",
+        properties = JSONObject().put(
+          "level",
+          JSONObject().put("type", "INTEGER").put("description", "Target media volume, 0 to 100.")
+        ),
+        required = JSONArray().put("level")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "setBrightness",
+        description = "Set the screen brightness to a percentage between 0 and 100. Requires the Write Settings permission; if it is missing, Android's settings screen opens.",
+        properties = JSONObject().put(
+          "level",
+          JSONObject().put("type", "INTEGER").put("description", "Target brightness, 0 to 100.")
+        ),
+        required = JSONArray().put("level")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "setFlashlight",
+        description = "Turn the phone's flashlight (torch) on or off.",
+        properties = JSONObject().put(
+          "on",
+          JSONObject().put("type", "BOOLEAN").put("description", "true to turn the torch on, false to turn it off.")
+        ),
+        required = JSONArray().put("on")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "inspectScreen",
+        description = "Read the current screen using Android's accessibility tree. Returns visible text, buttons, fields and their bounds. Use before clicking or typing in another app."
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "clickElement",
+        description = "Click a visible element in the current app by its text, content description or view id. Inspect the screen first when unsure.",
+        properties = JSONObject().put(
+          "target",
+          JSONObject().put("type", "STRING").put("description", "Visible label or description of the element to click.")
+        ),
+        required = JSONArray().put("target")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "typeText",
+        description = "Type text into the focused editable field, or into a field identified by a visible label or hint.",
+        properties = JSONObject()
+          .put("text", JSONObject().put("type", "STRING").put("description", "Exact text to enter."))
+          .put("target", JSONObject().put("type", "STRING").put("description", "Optional field label or hint. Omit for the focused field.")),
+        required = JSONArray().put("text")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "scrollScreen",
+        description = "Scroll the current screen up or down.",
+        properties = JSONObject().put(
+          "direction",
+          JSONObject()
+            .put("type", "STRING")
+            .put("description", "Scroll direction.")
+            .put("enum", JSONArray(listOf("down", "up")))
+        ),
+        required = JSONArray().put("direction")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "pressKey",
+        description = "Press a system navigation key: back, home, recents, notifications or quick settings.",
+        properties = JSONObject().put(
+          "key",
+          JSONObject()
+            .put("type", "STRING")
+            .put("description", "System key to press.")
+            .put("enum", JSONArray(listOf("back", "home", "recents", "notifications", "quick_settings")))
+        ),
+        required = JSONArray().put("key")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "lookAtScreen",
+        description = "Capture the current screen as a JPEG and attach it to the conversation so you can see it. Requires the accessibility service. Use for visual questions about what is on screen."
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "rememberFact",
+        description = "Permanently remember one fact the user explicitly asked you to remember. Do not store secrets, passwords or payment details.",
+        properties = JSONObject().put(
+          "fact",
+          JSONObject().put("type", "STRING").put("description", "The fact to remember, in the user's words.")
+        ),
+        required = JSONArray().put("fact")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "forgetMemory",
+        description = "Delete saved long-term memories that match a keyword.",
+        properties = JSONObject().put(
+          "query",
+          JSONObject().put("type", "STRING").put("description", "Keyword identifying the memory to forget.")
+        ),
+        required = JSONArray().put("query")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "recallMemories",
+        description = "List the facts Zed has saved about the user."
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "getWeather",
+        description = "Get the current weather and today's high/low for the phone's location."
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "creatorControl",
+        description = "Creator-only master control for system actions and Zed's own settings. This only works after the user verifies creator access locally in the app. If it returns creator_access_required, tell the user to verify in Settings > Creator access; never ask for the code in conversation.",
+        properties = JSONObject().put(
+          "action",
+          JSONObject()
+            .put("type", "STRING")
+            .put("description", "Master-control command to run.")
+            .put(
+              "enum",
+              JSONArray(
+                listOf(
+                  "lock_screen", "go_home", "go_back", "open_recents",
+                  "open_notifications", "open_quick_settings", "clear_memory",
+                  "clear_conversation", "enable_wake_word", "disable_wake_word",
+                  "enable_overlay", "disable_overlay", "set_dark_theme",
+                  "set_light_theme", "lock_creator"
+                )
+              )
+            )
+        ),
+        required = JSONArray().put("action")
       )
     )
 

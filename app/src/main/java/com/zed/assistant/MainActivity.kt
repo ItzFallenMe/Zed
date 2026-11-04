@@ -21,6 +21,8 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import com.zed.assistant.ai.PermissionGateway
+import com.zed.assistant.overlay.ZedOverlayService
+import com.zed.assistant.ui.CreatorAccessDialog
 import com.zed.assistant.ui.SettingsScreen
 import com.zed.assistant.ui.ZedBottomDock
 import com.zed.assistant.ui.ZedChatScreen
@@ -73,6 +75,14 @@ class MainActivity : ComponentActivity() {
     }
   }
 
+  override fun onResume() {
+    super.onResume()
+    // Restore the user's hands-free and floating-avatar choices after returning
+    // from a system permission screen. Both services verify their own access.
+    ZedWakeWordService.sync(this)
+    ZedOverlayService.sync(this)
+  }
+
   // No onStop teardown: ZedSessionService keeps the microphone and Live session
   // alive while a device action (WhatsApp, dialer, contacts) is in the foreground.
 
@@ -86,12 +96,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ZedRoot(viewModel: MainViewModel) {
   val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+  val creatorPrompt by viewModel.creatorPrompt.collectAsStateWithLifecycle()
   ZedTheme(mode = themeMode) {
     Surface(
       modifier = Modifier.fillMaxSize(),
       color = MaterialTheme.colorScheme.background
     ) {
       ZedApp(viewModel)
+      creatorPrompt?.let { prompt ->
+        CreatorAccessDialog(
+          prompt = prompt,
+          onVerify = viewModel::verifyCreatorCode,
+          onUseVoice = viewModel::retryCreatorVoice,
+          onDismiss = viewModel::cancelCreatorChallenge
+        )
+      }
     }
   }
 }

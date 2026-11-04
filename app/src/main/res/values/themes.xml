@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Zed" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#FFEEF2F9</item>
-        <item name="android:statusBarColor">#FFEEF2F9</item>
-        <item name="android:navigationBarColor">#FFEEF2F9</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <style name="Theme.Zed" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF000000</item>
+        <item name="android:statusBarColor">#FF000000</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
     </style>

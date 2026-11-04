@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.ui.components.StatusDot
+import com.zed.assistant.ui.theme.LocalLiquidGlassEnabled
 import com.zed.assistant.ui.theme.LocalZedPalette
 
 enum class ZedTab {
@@ -64,6 +66,7 @@ fun ZedBottomDock(
   onMicLongClick: () -> Unit
 ) {
   val palette = LocalZedPalette.current
+  val liquid = LocalLiquidGlassEnabled.current
   val dockShape = RoundedCornerShape(28.dp)
 
   Box(
@@ -73,49 +76,59 @@ fun ZedBottomDock(
       .padding(horizontal = 14.dp, vertical = 10.dp),
     contentAlignment = Alignment.BottomCenter
   ) {
-    Canvas(
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(26.dp)
-        .offset(y = (-58).dp)
-    ) {
-      val path = Path().apply {
-        moveTo(size.width * 0.30f, size.height)
-        quadraticTo(
-          size.width * 0.50f,
-          (-14).dp.toPx(),
-          size.width * 0.70f,
-          size.height
+    if (liquid) {
+      Canvas(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(26.dp)
+          .offset(y = (-58).dp)
+      ) {
+        val path = Path().apply {
+          moveTo(size.width * 0.30f, size.height)
+          quadraticTo(
+            size.width * 0.50f,
+            (-14).dp.toPx(),
+            size.width * 0.70f,
+            size.height
+          )
+        }
+        drawPath(
+          path = path,
+          brush = Brush.horizontalGradient(
+            listOf(
+              palette.accent.copy(alpha = 0.05f),
+              palette.accent.copy(alpha = 0.55f),
+              palette.accentSecondary.copy(alpha = 0.45f),
+              palette.accent.copy(alpha = 0.05f)
+            )
+          ),
+          style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
         )
       }
-      drawPath(
-        path = path,
-        brush = Brush.horizontalGradient(
-          listOf(
-            palette.accent.copy(alpha = 0.05f),
-            palette.accent.copy(alpha = 0.55f),
-            palette.accentSecondary.copy(alpha = 0.45f),
-            palette.accent.copy(alpha = 0.05f)
-          )
-        ),
-        style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
-      )
     }
 
     Box(
       modifier = Modifier
         .fillMaxWidth()
         .height(64.dp)
-        .shadow(18.dp, dockShape)
+        .shadow(if (liquid) 18.dp else 3.dp, dockShape)
     ) {
       Box(
         modifier = Modifier
           .fillMaxSize()
           .clip(dockShape)
           .background(
-            Brush.verticalGradient(listOf(palette.dockStart, palette.dockEnd))
+            Brush.verticalGradient(
+              if (liquid) listOf(palette.dockStart, palette.dockEnd)
+              else listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surface)
+            )
           )
-          .border(1.dp, palette.dockBorder.copy(alpha = 0.9f), dockShape)
+          .border(
+            1.dp,
+            if (liquid) palette.dockBorder.copy(alpha = 0.9f)
+            else MaterialTheme.colorScheme.outlineVariant,
+            dockShape
+          )
       )
       Row(
         modifier = Modifier
@@ -150,7 +163,8 @@ fun ZedBottomDock(
               .clip(CircleShape)
               .background(
                 Brush.linearGradient(
-                  listOf(palette.accent, palette.accentSecondary)
+                  if (liquid) listOf(palette.accent, palette.accentSecondary)
+                  else listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary)
                 )
               )
               .combinedClickable(onClick = onMicClick, onLongClick = onMicLongClick)
@@ -170,7 +184,7 @@ fun ZedBottomDock(
                 Icons.Rounded.Stop
               },
               contentDescription = null,
-              tint = palette.specular,
+              tint = if (liquid) palette.specular else MaterialTheme.colorScheme.onPrimary,
               modifier = Modifier.size(28.dp)
             )
           }

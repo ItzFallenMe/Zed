@@ -1,6 +1,11 @@
 package com.zed.assistant.ui
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,12 +48,15 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,7 +75,13 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zed.assistant.BuildConfig
+import com.zed.assistant.ZedWakeWordService
+import com.zed.assistant.ai.PermissionGateway
 import com.zed.assistant.ai.ZedEngine
+import com.zed.assistant.overlay.ZedOverlayService
+import com.zed.assistant.data.CreatorGate
+import com.zed.assistant.data.ZedPreferences
+import com.zed.assistant.data.ZedVoiceProfiles
 import com.zed.assistant.ui.components.GlassCard
 import com.zed.assistant.ui.components.GlassChip
 import com.zed.assistant.ui.components.GlassIconButton
@@ -78,11 +92,12 @@ import com.zed.assistant.ui.theme.LocalZedPalette
 import com.zed.assistant.ui.theme.ZedThemeMode
 import com.zed.assistant.ui.theme.palette
 import com.zed.assistant.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 /**
- * Settings grouped like the reference design: operator identity first, then
- * voice, data safety, and appearance. Every row opens a focused dialog rather
- * than scattering inputs across the page.
+ * Settings grouped around operator identity, voice, presence, creator access,
+ * data safety, and appearance. Every row opens a focused dialog rather than
+ * scattering inputs across the page.
  */
 @Composable
 fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
@@ -100,8 +115,22 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
   var voice by remember {
     mutableStateOf(prefs.getString(ZedEngine.KEY_VOICE, ZedEngine.DEFAULT_VOICE).orEmpty().ifBlank { ZedEngine.DEFAULT_VOICE })
   }
+  var voicePreset by remember {
+    mutableStateOf(prefs.getString(ZedPreferences.KEY_VOICE_PRESET, "").orEmpty())
+  }
+  val voiceProfile = ZedVoiceProfiles.resolve(voicePreset, voice)
+
+  val zedPrefs = remember { ZedPreferences(context) }
+  val scope = rememberCoroutineScope()
+  var wakeWordEnabled by remember { mutableStateOf(zedPrefs.wakeWordEnabled) }
+  var overlayEnabled by remember { mutableStateOf(zedPrefs.overlayEnabled) }
+  var ownerVoiceEnabled by remember { mutableStateOf(zedPrefs.isOwnerVoiceEnabled) }
+  var overlayToy by remember { mutableStateOf(zedPrefs.overlayToy) }
+  var soundEffectsEnabled by remember { mutableStateOf(zedPrefs.soundEffectsEnabled) }
 
   val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+  val liquidGlass by viewModel.liquidGlass.collectAsStateWithLifecycle()
+  val creatorUnlocked by viewModel.creatorUnlocked.collectAsStateWithLifecycle()
   var activeDialog by rememberSaveable { mutableStateOf<String?>(null) }
 
   BackHandler { onBack() }
@@ -140,7 +169,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
           SettingRow(
             icon = Icons.Rounded.RecordVoiceOver,
             title = "AI persona & voice",
-            subtitle = "${userName.ifBlank { "Operator" }} · voice $voice",
+            subtitle = "${userName.ifBlank { "Operator" }} · ${voiceProfile.label}",
             onClick = { activeDialog = DIALOG_PERSONA }
           )
           GroupDivider()
@@ -167,6 +196,141 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(18.dp))
+        SectionLabel("HANDS-FREE & PRESENCE")
+        SettingsGroup {
+          SettingToggleRow(
+            icon = Icons.Rounded.RecordVoiceOver,
+            title = "Wake word",
+            subtitle = "Say “Zed” or “Hey Zed” · processed offline",
+            checked = wakeWordEnabled,
+            onCheckedChange = { enabled ->
+              if (!enabled) {
+                zedPrefs.wakeWordEnabled = false
+                wakeWordEnabled = false
+                ZedWakeWordService.stop(context)
+              } else {
+                scope.launch {
+                  val granted = PermissionGateway.ensure(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                  )
+                  if (granted) {
+                    zedPrefs.wakeWordEnabled = true
+                    wakeWordEnabled = true
+                    ZedWakeWordService.sync(context)
+                  } else {
+                    Toast.makeText(
+                      context,
+                      "Microphone permission is needed for the wake word.",
+                      Toast.LENGTH_SHORT
+                    ).show()
+                  }
+                }
+              }
+            }
+          )
+          GroupDivider()
+          SettingRow(
+            icon = Icons.Rounded.Shield,
+            title = "Owner voice",
+            subtitle = if (ownerVoiceEnabled) {
+              "Speaker profile active · three local samples"
+            } else {
+              "Optional on-device voice profile"
+            },
+            onClick = { activeDialog = DIALOG_OWNER_VOICE },
+            trailing = {
+              GlassChip(
+                label = if (ownerVoiceEnabled) "ACTIVE" else "SET UP",
+                contentColor = if (ownerVoiceEnabled) palette.success else palette.accent,
+                background = palette.accentSoft
+              )
+            }
+          )
+          GroupDivider()
+          SettingToggleRow(
+            icon = Icons.Rounded.Palette,
+            title = "Floating avatar",
+            subtitle = "Robot head on top of other apps, with live state",
+            checked = overlayEnabled,
+            onCheckedChange = { enabled ->
+              if (!enabled) {
+                zedPrefs.overlayEnabled = false
+                overlayEnabled = false
+                ZedOverlayService.stop(context)
+              } else {
+                zedPrefs.overlayEnabled = true
+                overlayEnabled = true
+                if (!Settings.canDrawOverlays(context)) {
+                  Toast.makeText(
+                    context,
+                    "Allow display over other apps, then return to Zed.",
+                    Toast.LENGTH_LONG
+                  ).show()
+                  context.startActivity(
+                    Intent(
+                      Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                      Uri.parse("package:${context.packageName}")
+                    )
+                  )
+                } else {
+                  ZedOverlayService.sync(context)
+                }
+              }
+            }
+          )
+          GroupDivider()
+          SettingRow(
+            icon = Icons.Rounded.Favorite,
+            title = "Overlay avatar style",
+            subtitle = overlayToy.replaceFirstChar { it.uppercase() },
+            onClick = { activeDialog = DIALOG_OVERLAY_STYLE }
+          )
+          GroupDivider()
+          SettingToggleRow(
+            icon = Icons.AutoMirrored.Rounded.VolumeUp,
+            title = "Wake chime",
+            subtitle = "Soft confirmation when the wake word fires",
+            checked = soundEffectsEnabled,
+            onCheckedChange = { enabled ->
+              soundEffectsEnabled = enabled
+              zedPrefs.soundEffectsEnabled = enabled
+            }
+          )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SectionLabel("CREATOR PROTOCOL")
+        SettingsGroup {
+          SettingRow(
+            icon = Icons.Rounded.Shield,
+            title = "Creator recognition",
+            subtitle = if (creatorUnlocked) {
+              "Vedant · master control active"
+            } else {
+              "Not verified · say your code to unlock"
+            },
+            onClick = { activeDialog = DIALOG_CREATOR },
+            trailing = {
+              GlassChip(
+                label = if (creatorUnlocked) "CREATOR" else "LOCKED",
+                contentColor = if (creatorUnlocked) palette.accent else palette.textMuted,
+                background = if (creatorUnlocked) palette.accentSoft else palette.card
+              )
+            }
+          )
+          if (creatorUnlocked) {
+            GroupDivider()
+            SettingRow(
+              icon = Icons.Rounded.Key,
+              title = "Change creator code",
+              subtitle = "Replace the default 160123 with your own code",
+              onClick = { activeDialog = DIALOG_CREATOR_CODE }
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
         SectionLabel("SYSTEM & DATA ENGINE")
         SettingsGroup {
           SettingRow(
@@ -179,12 +343,26 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
           SettingRow(
             icon = Icons.Rounded.Phone,
             title = "App control & device actions",
-            subtitle = "Allowlisted apps, safe links, contacts and calls",
+            subtitle = "Installed apps, safe links, contacts and calls",
             onClick = { activeDialog = DIALOG_ACTIONS }
           )
           GroupDivider()
           SettingRow(
             icon = Icons.Rounded.Shield,
+            title = "Permissions & access",
+            subtitle = "Microphone, contacts, overlay, accessibility",
+            onClick = { activeDialog = DIALOG_PERMISSIONS }
+          )
+          GroupDivider()
+          SettingRow(
+            icon = Icons.Rounded.Edit,
+            title = "Memory vault",
+            subtitle = "Review or remove facts Zed saved",
+            onClick = { activeDialog = DIALOG_MEMORY }
+          )
+          GroupDivider()
+          SettingRow(
+            icon = Icons.Rounded.Lock,
             title = "App identity & integrity",
             subtitle = "Zed ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}",
             onClick = { activeDialog = DIALOG_IDENTITY }
@@ -194,9 +372,21 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(18.dp))
         SectionLabel("APPEARANCE & SECURITY")
         SettingsGroup {
+          SettingToggleRow(
+            icon = Icons.Rounded.Palette,
+            title = "Liquid glass effects",
+            subtitle = if (liquidGlass) {
+              "Enabled · translucent surfaces and ambient glow"
+            } else {
+              "Off · Material 3 surfaces save GPU and battery"
+            },
+            checked = liquidGlass,
+            onCheckedChange = { viewModel.setLiquidGlass(it) }
+          )
+          GroupDivider()
           SettingRow(
             icon = Icons.Rounded.Palette,
-            title = "Theme & 3D orb colors",
+            title = "Theme & avatar colors",
             subtitle = themeMode.label,
             onClick = { activeDialog = DIALOG_THEME },
             trailing = {
@@ -247,17 +437,65 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     DIALOG_PERSONA -> PersonaDialog(
       initialName = userName,
       initialVoice = voice,
+      initialPreset = voicePreset,
       onDismiss = { activeDialog = null },
-      onSave = { name, selectedVoice ->
+      onSave = { name, selectedVoice, selectedPreset ->
         userName = name
         voice = selectedVoice
+        voicePreset = selectedPreset
         prefs.edit {
           putString(ZedEngine.KEY_USER_NAME, name)
           putString(ZedEngine.KEY_VOICE, selectedVoice)
+          putString(ZedPreferences.KEY_VOICE_PRESET, selectedPreset)
         }
         activeDialog = null
       }
     )
+    DIALOG_CREATOR -> CreatorPanelDialog(
+      unlocked = creatorUnlocked,
+      onUnlockWithCode = {
+        activeDialog = null
+        viewModel.requestCreatorChallenge(voice = false)
+      },
+      onUnlockWithVoice = {
+        activeDialog = null
+        viewModel.requestCreatorChallenge(voice = true)
+      },
+      onChangeCode = { activeDialog = DIALOG_CREATOR_CODE },
+      onLock = {
+        viewModel.lockCreator()
+        activeDialog = null
+      },
+      onDismiss = { activeDialog = null }
+    )
+    DIALOG_CREATOR_CODE -> CreatorCodeDialog(
+      onDismiss = { activeDialog = null },
+      onSave = { newCode ->
+        val saved = viewModel.changeCreatorCode(newCode)
+        if (saved) activeDialog = null
+        saved
+      }
+    )
+    DIALOG_OWNER_VOICE -> OwnerVoiceDialog(
+      preferences = zedPrefs,
+      onDismiss = { activeDialog = null },
+      onProfileChanged = { enabled ->
+        ownerVoiceEnabled = enabled
+        activeDialog = if (enabled) null else activeDialog
+      }
+    )
+    DIALOG_OVERLAY_STYLE -> OverlayStyleDialog(
+      current = overlayToy,
+      onSelect = { selected ->
+        overlayToy = selected
+        zedPrefs.overlayToy = selected
+        if (overlayEnabled) ZedOverlayService.sync(context)
+        activeDialog = null
+      },
+      onDismiss = { activeDialog = null }
+    )
+    DIALOG_MEMORY -> MemoryDialog(onDismiss = { activeDialog = null })
+    DIALOG_PERMISSIONS -> PermissionsDialog(onDismiss = { activeDialog = null })
     DIALOG_THEME -> ThemeDialog(
       current = themeMode,
       onSelect = { mode ->
@@ -273,22 +511,22 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     )
     DIALOG_PRIVACY -> ZedInfoDialog(
       title = "Data & privacy",
-      message = "Your Gemini API key is stored in this app's private preferences and is never uploaded anywhere except to Google's Live endpoint when a session starts. Android backup is disabled, microphone audio is streamed only during an active session, and contacts are read only when you ask Zed to call someone by name.",
+      message = "Your Gemini API key and creator-code hash are stored in this app's private preferences, encrypted with keys held by the Android Keystore. The key is sent only to Google's Live endpoint when a session starts. Android backup is disabled, microphone audio is streamed only during an active session, and contacts are read only when you ask Zed to call someone by name.",
       onDismiss = { activeDialog = null }
     )
     DIALOG_ACTIONS -> ZedInfoDialog(
       title = "Device actions",
-      message = "Zed can open an allowlist of installed apps, open WhatsApp, open safe https links, and start a call or open the dialer. If CALL_PHONE is unavailable, Zed opens the dialer and says so. Ambiguous contacts are never guessed; Zed asks you to choose.",
+      message = "Zed can open any installed launcher app by name, open WhatsApp, prefill a message, search YouTube, open safe https links, control media and volume, change brightness, use the flashlight, start a call, or operate the current screen through Android accessibility. Ambiguous contacts and apps are never guessed; Zed asks you to choose. A prefilled WhatsApp message still needs your tap to send.",
       onDismiss = { activeDialog = null }
     )
     DIALOG_IDENTITY -> ZedInfoDialog(
       title = "App identity",
-      message = "Zed ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})\nPackage: ${BuildConfig.APPLICATION_ID}\nCreator: ItzFallenMe\nLicense: MIT\n\nNo remote attestation or verification backend is configured. Builds are reproducible from the public repository.",
+      message = "Z.E.D. ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})\nPackage: ${BuildConfig.APPLICATION_ID}\nCreator: Vedant, ItzFallenMe\nLicense: MIT\n\nCreator access is verified locally by a PBKDF2-hashed code sealed with the Android Keystore. No remote attestation or verification backend is configured.",
       onDismiss = { activeDialog = null }
     )
     DIALOG_ABOUT -> ZedInfoDialog(
       title = "About Zed",
-      message = "Zed is a native Android voice assistant built with Kotlin and Jetpack Compose. It streams microphone PCM to Gemini Live and plays Gemini's native audio through a persistent AudioTrack. The interface is a liquid-glass shell inspired by the Part 7 design language.\n\nCreated and maintained by ItzFallenMe.",
+      message = "Z.E.D. — Zeta Evolved Device Intelligence — is a native Android voice partner built with Kotlin and Jetpack Compose. It streams microphone PCM to Gemini Live, plays Gemini's native audio through a persistent AudioTrack, and keeps creator verification, wake-word detection and speaker vectors on the device.\n\nCreated and maintained by Vedant, ItzFallenMe.",
       onDismiss = { activeDialog = null }
     )
   }
@@ -438,6 +676,12 @@ private const val DIALOG_ACTIONS = "actions"
 private const val DIALOG_IDENTITY = "identity"
 private const val DIALOG_THEME = "theme"
 private const val DIALOG_ABOUT = "about"
+private const val DIALOG_CREATOR = "creator"
+private const val DIALOG_CREATOR_CODE = "creator_code"
+private const val DIALOG_OWNER_VOICE = "owner_voice"
+private const val DIALOG_OVERLAY_STYLE = "overlay_style"
+private const val DIALOG_MEMORY = "memory"
+private const val DIALOG_PERMISSIONS = "permissions"
 
 @Composable
 private fun SettingsGroup(content: @Composable () -> Unit) {
@@ -459,6 +703,69 @@ private fun GroupDivider() {
       .height(1.dp)
       .background(palette.cardBorder.copy(alpha = 0.55f))
   )
+}
+
+@Composable
+private fun SettingToggleRow(
+  icon: ImageVector,
+  title: String,
+  subtitle: String,
+  checked: Boolean,
+  onCheckedChange: (Boolean) -> Unit
+) {
+  val palette = LocalZedPalette.current
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable(role = Role.Switch) { onCheckedChange(!checked) }
+      .padding(vertical = 13.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Box(
+      modifier = Modifier
+        .size(40.dp)
+        .clip(RoundedCornerShape(13.dp))
+        .background(palette.accentSoft),
+      contentAlignment = Alignment.Center
+    ) {
+      Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = palette.accent,
+        modifier = Modifier.size(21.dp)
+      )
+    }
+    Column(
+      modifier = Modifier
+        .weight(1f)
+        .padding(start = 12.dp, end = 8.dp)
+    ) {
+      Text(
+        text = title,
+        color = palette.textPrimary,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold
+      )
+      Text(
+        text = subtitle,
+        color = palette.textMuted,
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        modifier = Modifier.padding(top = 2.dp)
+      )
+    }
+    Switch(
+      checked = checked,
+      onCheckedChange = onCheckedChange,
+      colors = SwitchDefaults.colors(
+        checkedThumbColor = palette.background,
+        checkedTrackColor = palette.accent,
+        uncheckedThumbColor = palette.textMuted,
+        uncheckedTrackColor = palette.accentSoft,
+        uncheckedBorderColor = palette.cardBorder
+      )
+    )
+  }
 }
 
 @Composable
@@ -549,9 +856,9 @@ private fun ThemeDialog(
     onDismissRequest = onDismiss,
     title = {
       Column {
-        Text("Theme & 3D orb", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+        Text("Theme & palette", color = palette.textPrimary, fontWeight = FontWeight.Bold)
         Text(
-          text = "The orb palette follows your selection.",
+          text = "The robot stage and accent colours follow your selection.",
           color = palette.textMuted,
           fontSize = 12.sp,
           fontWeight = FontWeight.Normal,
@@ -720,12 +1027,16 @@ private fun ApiDialog(
 private fun PersonaDialog(
   initialName: String,
   initialVoice: String,
+  initialPreset: String,
   onDismiss: () -> Unit,
-  onSave: (String, String) -> Unit
+  onSave: (String, String, String) -> Unit
 ) {
   val palette = LocalZedPalette.current
   var name by remember { mutableStateOf(initialName) }
-  var voice by remember { mutableStateOf(initialVoice) }
+  var presetId by remember {
+    mutableStateOf(ZedVoiceProfiles.resolve(initialPreset, initialVoice).id)
+  }
+  val selectedProfile = ZedVoiceProfiles.byId(presetId)
   var voiceMenu by remember { mutableStateOf(false) }
 
   AlertDialog(
@@ -754,12 +1065,20 @@ private fun PersonaDialog(
               .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Text(
-              text = voice,
-              color = palette.textPrimary,
-              fontSize = 13.sp,
-              modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = selectedProfile.label,
+                color = palette.textPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+              )
+              Text(
+                text = selectedProfile.description,
+                color = palette.textMuted,
+                fontSize = 10.sp,
+                lineHeight = 14.sp
+              )
+            }
             Icon(
               imageVector = Icons.Rounded.ChevronRight,
               contentDescription = null,
@@ -772,17 +1091,26 @@ private fun PersonaDialog(
             onDismissRequest = { voiceMenu = false },
             containerColor = palette.card
           ) {
-            ZedEngine.AVAILABLE_VOICES.forEach { option ->
+            ZedVoiceProfiles.ALL.forEach { option ->
               DropdownMenuItem(
                 text = {
-                  Text(
-                    text = option,
-                    color = if (option == voice) palette.accent else palette.textPrimary,
-                    fontSize = 13.sp
-                  )
+                  Column {
+                    Text(
+                      text = option.label,
+                      color = if (option.id == presetId) palette.accent else palette.textPrimary,
+                      fontSize = 13.sp,
+                      fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                      text = option.description,
+                      color = palette.textMuted,
+                      fontSize = 10.sp,
+                      lineHeight = 14.sp
+                    )
+                  }
                 },
                 onClick = {
-                  voice = option
+                  presetId = option.id
                   voiceMenu = false
                 }
               )
@@ -790,15 +1118,171 @@ private fun PersonaDialog(
           }
         }
         Text(
-          text = "Changes apply the next time you start a session.",
+          text = "Each preset uses a different Gemini voice and matching delivery style. Changes apply the next time you start a session.",
           color = palette.textMuted,
-          fontSize = 11.sp
+          fontSize = 11.sp,
+          lineHeight = 16.sp
         )
       }
     },
     confirmButton = {
-      TextButton(onClick = { onSave(name.trim(), voice) }) {
+      TextButton(onClick = { onSave(name.trim(), selectedProfile.geminiVoice, selectedProfile.id) }) {
         Text("SAVE", color = palette.accent, fontWeight = FontWeight.Bold)
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("CANCEL", color = palette.textMuted, fontWeight = FontWeight.Bold)
+      }
+    },
+    containerColor = palette.card,
+    shape = RoundedCornerShape(22.dp)
+  )
+}
+
+@Composable
+private fun CreatorPanelDialog(
+  unlocked: Boolean,
+  onUnlockWithCode: () -> Unit,
+  onUnlockWithVoice: () -> Unit,
+  onChangeCode: () -> Unit,
+  onLock: () -> Unit,
+  onDismiss: () -> Unit
+) {
+  val palette = LocalZedPalette.current
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = {
+      Text(
+        if (unlocked) "Creator verified" else "Creator access",
+        color = palette.textPrimary,
+        fontWeight = FontWeight.Bold
+      )
+    },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+          if (unlocked) {
+            "You are recognized as Vedant, ItzFallenMe. Master control is active: system navigation, wake word, floating avatar, themes, memory and conversation controls are available to Zed."
+          } else {
+            "Say or type your creator code to unlock master control. Verification happens only on this device. The first-run code is 160123; change it after you unlock."
+          },
+          color = palette.textMuted,
+          fontSize = 12.sp,
+          lineHeight = 18.sp
+        )
+        if (unlocked) {
+          Text(
+            "Zed never sends the code to Gemini and never asks for it in conversation.",
+            color = palette.textSecondary,
+            fontSize = 11.sp,
+            lineHeight = 16.sp
+          )
+        }
+      }
+    },
+    confirmButton = {
+      if (unlocked) {
+        TextButton(onClick = onLock) {
+          Text("LOCK MASTER CONTROL", color = palette.error, fontWeight = FontWeight.Bold)
+        }
+      } else {
+        TextButton(onClick = onUnlockWithCode) {
+          Text("ENTER CODE", color = palette.accent, fontWeight = FontWeight.Bold)
+        }
+      }
+    },
+    dismissButton = {
+      Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+        if (unlocked) {
+          TextButton(onClick = onChangeCode) {
+            Text("CHANGE CODE", color = palette.accent, fontWeight = FontWeight.Bold)
+          }
+        } else {
+          TextButton(onClick = onUnlockWithVoice) {
+            Text("USE VOICE", color = palette.textSecondary, fontWeight = FontWeight.Bold)
+          }
+        }
+        TextButton(onClick = onDismiss) {
+          Text("CLOSE", color = palette.textMuted, fontWeight = FontWeight.Bold)
+        }
+      }
+    },
+    containerColor = palette.card,
+    shape = RoundedCornerShape(22.dp)
+  )
+}
+
+@Composable
+private fun CreatorCodeDialog(
+  onDismiss: () -> Unit,
+  onSave: (String) -> Boolean
+) {
+  val palette = LocalZedPalette.current
+  var newCode by remember { mutableStateOf("") }
+  var confirmation by remember { mutableStateOf("") }
+  var error by remember { mutableStateOf<String?>(null) }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Change creator code", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+          "Use ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digits. The new code is hashed with PBKDF2 and encrypted with the Android Keystore.",
+          color = palette.textMuted,
+          fontSize = 12.sp,
+          lineHeight = 18.sp
+        )
+        OutlinedTextField(
+          value = newCode,
+          onValueChange = { value ->
+            newCode = value.filter(Char::isDigit).take(CreatorGate.MAX_CODE_LENGTH)
+            error = null
+          },
+          label = { Text("New code", color = palette.textMuted) },
+          singleLine = true,
+          visualTransformation = PasswordVisualTransformation(),
+          keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.NumberPassword,
+            imeAction = ImeAction.Next
+          ),
+          modifier = Modifier.fillMaxWidth(),
+          colors = zedFieldColors()
+        )
+        OutlinedTextField(
+          value = confirmation,
+          onValueChange = { value ->
+            confirmation = value.filter(Char::isDigit).take(CreatorGate.MAX_CODE_LENGTH)
+            error = null
+          },
+          label = { Text("Confirm new code", color = palette.textMuted) },
+          singleLine = true,
+          visualTransformation = PasswordVisualTransformation(),
+          keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.NumberPassword,
+            imeAction = ImeAction.Done
+          ),
+          modifier = Modifier.fillMaxWidth(),
+          colors = zedFieldColors()
+        )
+        if (error != null) {
+          Text(error!!, color = palette.error, fontSize = 12.sp)
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(
+        onClick = {
+          when {
+            !CreatorGate.isValidCodeFormat(newCode) ->
+              error = "Use ${CreatorGate.MIN_CODE_LENGTH}–${CreatorGate.MAX_CODE_LENGTH} digits."
+            newCode != confirmation -> error = "The two codes don't match."
+            !onSave(newCode) -> error = "Could not save the code. Try again."
+          }
+        }
+      ) {
+        Text("SAVE CODE", color = palette.accent, fontWeight = FontWeight.Bold)
       }
     },
     dismissButton = {

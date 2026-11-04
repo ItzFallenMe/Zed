@@ -1,219 +1,377 @@
-# Zed — native Android voice assistant
+<div align="center">
+
+# Z.E.D. — Zeta Evolved Device Intelligence
+
+<img src="zed_applogo.png" width="144" alt="Zed logo">
 
 [![Build](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml/badge.svg)](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.0.0-8B5CF6.svg)](CHANGELOG.md)
 ![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)
 
-Zed is a real-time, voice-to-voice assistant built as a native Android app in
-Kotlin + Jetpack Compose. The microphone streams raw PCM to the Gemini Live
-WebSocket API, and Gemini's native audio output is played through a persistent
-`AudioTrack`. The conversation path has no browser, no `SpeechSynthesis`, no
-pre-recorded audio, and no hard-coded reply.
+</div>
 
-The interface is a **Part 7-inspired liquid-glass shell**: four palettes, a
-floating curved dock, grouped operator settings, and a live 3D particle orb.
-The orb is an offline, network-disabled WebGL canvas rendered in a local
-WebView; it is presentation only and never touches microphone audio, the Live
-session, or device actions. Everything else is native Compose.
+Z.E.D. is a real-time voice partner that lives on your phone. It is a native
+Android app written in Kotlin and Jetpack Compose: microphone PCM goes straight
+to the Gemini Live API, Gemini's native audio comes back through one persistent
+`AudioTrack`, and the interface stays honest about what the device is doing.
 
-Created and maintained by **ItzFallenMe**.
+The product is built around a robot-head avatar, a true-black Material 3
+interface, and a creator protocol that never leaves the device. Z.E.D. is made
+to feel like a partner in the room, not a command line with a voice.
 
-## What it does
+**Created and maintained by Vedant — [ItzFallenMe](https://github.com/ItzFallenMe).**
 
-```
-mic (16 kHz PCM16)
-  -> Gemini Live BidiGenerateContent
-  -> Gemini native audio (24 kHz PCM16)
-  -> sequential AudioTrack queue
-  -> phone speaker
-```
+---
 
-- **Real voice conversation.** Continuous microphone streaming, one persistent
-  Live session, native Gemini audio playback, barge-in/interruption support.
-  A long-press mutes the current turn until it ends, so stale audio cannot
-  resume. Unexpected network drops resume the same conversation when a
-  resumption handle is available; otherwise the error card offers a retry.
-- **Automatic multilingual conversation.** No language picker. Hindi, English,
-  Hinglish, Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada, Malayalam,
-  Punjabi, Urdu and every other language the model supports are handled by the
-  model's automatic language detection, with the system instruction telling Zed
-  to reply in the user's language or mix.
-- **Zed personality.** Young, confident, witty, playful, adaptive in tone, never
-  robotic, concise enough for speech.
-- **Safe device actions.** `openWhatsApp`, `openApp`, `openUrl`, `makeCall`,
-  `callContact` — with argument validation, an app allowlist, contact ambiguity
-  handling, and truthful tool results.
-- **Real UI states.** `IDLE`, `CONNECTING`, `LISTENING`, `SPEAKING`, `ERROR`
-  drive the orb, status pill, conversation header, and controls.
-- **Complete assistant shell.** Home, Conversation, Settings, and Updates share
-  the same stateful engine and are reachable from the floating dock.
-- **Typed and spoken turns.** Typed messages use the same Gemini Live session as
-  microphone input and completed turns remain available in the current session.
-- **Speaker diagnostic.** Settings → *Speaker diagnostic* plays 440 Hz through
-  the exact `AudioTrack` output graph used by Gemini audio.
-- **Foreground session continuity.** An Android foreground service keeps an
-  active voice session alive while the user temporarily switches apps.
+## Contents
 
-## Design
+- [What's new in 2.0](#whats-new-in-20)
+- [Feature set](#feature-set)
+- [Creator protocol](#creator-protocol)
+- [Voice profiles](#voice-profiles)
+- [Appearance](#appearance)
+- [Requirements and setup](#requirements-and-setup)
+- [Build and test](#build-and-test)
+- [Architecture](#architecture)
+- [Permissions](#permissions)
+- [Privacy and security](#privacy-and-security)
+- [Android limitations](#android-limitations)
+- [Project layout](#project-layout)
+- [Documentation](#documentation)
+- [License](#license)
 
-The UI is built from a small, explicit design system instead of one-off styling:
+## What's new in 2.0
 
-- **Liquid glass.** Translucent gradient cards, hairline borders, specular
-  highlights, and soft ambient glow fields.
-- **Four palettes.** Pearl light (default), Obsidian dark, Ruby red, and Sunset
-  glass. The selection is persisted and applied to both Compose and the orb.
-- **Particle orb.** A Three.js volume with idle, listening, thinking, and
-  speaking states. Zed's real microphone/playback level is pushed into the
-  shader while a session is active.
-- **Floating dock.** Five destinations with an elevated voice action and a
-  curved light trail.
-- **Grouped settings.** Operator identity, voice/model configuration, privacy,
-  device actions, theme, and app identity each open a focused dialog.
+Version 2.0.0 is the first complete release of Z.E.D. It brings together the
+conversation engine, hands-free presence, device automation, memory, creator
+access, and the final visual identity:
 
-## Model
+- **Creator recognition** by spoken or typed phrase, a local code challenge,
+  Keystore-sealed PBKDF2 storage, and a persisted lockout after repeated misses.
+- **Master control** for a guarded set of system, presence, theme, memory, and
+  conversation actions.
+- **Robot-head avatar** as the primary assistant stage, with real state changes for idle,
+  thinking, listening, speaking, searching, working, happy, and error.
+- **Eight voice presets**, each pairing a Gemini native voice with its own
+  delivery direction.
+- **Material 3 by default**, with liquid glass as an optional, persisted
+  appearance mode for devices that can afford the GPU cost.
+- **Offline wake word, optional owner-voice enrolment, floating overlay, memory
+  vault, and a permissions centre** in Settings.
+- **Branded launcher icon and wordmark**, plus a full documentation and release
+  pass for the 2.0.0 tag.
 
-The default is **`gemini-3.8-live`**, the current low-latency Live model at the
-time of writing. The prompt's preferred `gemini-3.1-flash-live-preview` is now a
-legacy model; it is selectable in Settings, along with
-`gemini-3.8-live-extended-thinking`.
+The full release history, including the consolidated 1.x milestones, is in
+[CHANGELOG.md](CHANGELOG.md).
 
-The Live setup is built for both protocol generations:
+## Feature set
 
-- `gemini-3.8-*` tool declarations use `behavior: NON_BLOCKING` and tool
-  responses use `scheduling: INTERRUPT`.
-- `gemini-3.1-flash-live-preview` uses the synchronous tool protocol (no
-  `behavior`/`scheduling`), which that model supports.
+### Conversation
 
-## Project layout
+- Continuous microphone streaming at 16 kHz PCM16 over the Gemini Live
+  `BidiGenerateContent` WebSocket.
+- Native 24 kHz PCM16 playback through a single ordered `AudioTrack` queue.
+- Interruption handling: Gemini's `serverContent.interrupted` signal and a
+  long-press mute both flush stale playback.
+- Automatic multilingual conversation. There is no language picker; Z.E.D.
+  replies in the language the user speaks, including Hindi, English, Hinglish,
+  Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada, Malayalam, Punjabi, and
+  Urdu.
+- Typed turns share the same Live session and are queued until the current turn
+  finishes, so a message is never dropped while the socket is connecting.
+- Reconnect with the last resumption handle when the transport drops; otherwise
+  the error state exposes a retry action.
+- Foreground session service with a visible notification for as long as the
+  microphone is active.
 
-```
-app/src/main/
-  assets/
-    orb.html                   offline Three.js particle orb
-    three.min.js               vendored renderer (MIT)
-  java/com/zed/assistant/
-    MainActivity.kt            activity, permission launcher, navigation
-    ai/
-      ZedEngine.kt             session state machine, tool routing
-      GeminiLiveClient.kt      WebSocket protocol, setup, audio parsing, tools
-      AudioEngine.kt           AudioRecord capture + AudioTrack playback queue
-      AudioPcm.kt              MIME rate parsing, RMS, diagnostic tone
-      DeviceActions.kt         validated allowlisted device actions
-      ContactsRepository.kt    READ_CONTACTS name search
-      PermissionGateway.kt     coroutine <-> runtime permission bridge
-      ZedPersona.kt            Zed system instruction
-    model/                     assistant state and completed turns
-    ui/
-      HomeScreen.kt            orb stage, live status, quick actions
-      ConversationScreen.kt    typed and spoken conversation
-      SettingsScreen.kt        grouped operator settings
-      UpdatesScreen.kt         release notes and capabilities
-      NavigationDock.kt        floating navigation and voice control
-      ZedOrbView.kt            sandboxed local WebGL orb renderer
-      components/              liquid-glass design system
-      theme/                   palettes, typography, theme persistence
-    viewmodel/MainViewModel.kt
-    ZedSessionService.kt       foreground notification for active sessions
-  res/                         icons, launch theme, backup rules
-```
+### Presence
 
-## Setup
+- **Robot-head stage** on Home, driven by `AssistantState`. The face changes
+  expression and motion as Z.E.D. moves between idle, listening, thinking,
+  speaking, searching, working, happy, and error.
+- **Offline wake word** using a bundled Vosk English model. The wake detector
+  runs on-device; wake audio is not sent to Gemini.
+- **Optional owner-voice enrolment**: three samples produce a local speaker
+  vector stored in private preferences. The profile is for local speaker
+  matching and does not replace the creator code.
+- **Floating robot overlay** with a selectable toy skin. It requires the
+  "display over other apps" permission and can be toggled from Settings.
+- **Wake chime** toggle for a quiet confirmation when hands-free listening
+  begins.
 
-1. Get a Gemini API key from Google AI Studio.
-2. Either:
-   - enter the key in **Zed → Settings → Gemini Live API & model**, or
-   - build with `GEMINI_API_KEY=your_key ./gradlew :app:assembleDebug`
-     (or `-PGEMINI_API_KEY=your_key`).
-3. No key is hard-coded in the repository. The in-app key is stored in this
-   app's private `SharedPreferences`.
+### Device actions
 
-> For a public release, do not ship a long-lived API key. Use ephemeral Live
-> tokens or a backend proxy. The Settings screen says the same thing.
+Z.E.D. can act through declared tools, and every tool returns a structured
+result instead of inventing success:
 
-## Build and install
+- Open any launchable app by name, with ambiguity handling.
+- Open WhatsApp or WhatsApp Business and prefill a message or phone number.
+- Open an `https` link in the default browser.
+- Search YouTube, open a video result, or hand off to the YouTube app.
+- Read the current time, date, and weather.
+- Set volume, control media playback, set brightness, and toggle the flashlight.
+- Start a call or open the dialer when `CALL_PHONE` is unavailable.
+- Read the current screen, tap by visible text, type into a focused field, and
+  scroll through Android's accessibility service — only when explicitly asked.
+- Lock the screen on creator command through accessibility.
 
-Requirements: JDK 17+, Android SDK platform 36, build-tools 36.
+### Memory and history
+
+- Conversations are persisted locally in SQLite and restored into the chat
+  screen.
+- The memory vault stores durable facts the user explicitly asks Z.E.D. to
+  remember.
+- The creator panel can clear memory, clear conversation history, or lock
+  creator access.
+
+## Creator protocol
+
+Z.E.D. recognises its creator through a local challenge. Nothing about the code
+or the verification is sent to Gemini.
+
+1. Say or type a creator phrase, for example:
+   - "I am your creator"
+   - "Activate creator mode"
+   - "Active master control"
+   - "Main tumhara creator hoon"
+2. Z.E.D. asks for the six-digit code using the device's own text-to-speech and
+   speech recogniser, or accepts a typed code in the dialog.
+3. The first-run code is **`160123`**. Change it immediately after the first
+   successful unlock.
+4. Three wrong attempts start a persisted 60-second lockout.
+
+The code is hashed with PBKDF2-HMAC-SHA256 and sealed with a key held by the
+Android Keystore through `SecureStore`. Creator access is remembered until the
+creator explicitly locks it. The default code is a bootstrap secret, not a
+strong credential; changing it is part of setup.
+
+Once verified, creator mode can use `creatorControl` for guarded actions such as
+wake-word and overlay control, theme changes, memory and conversation cleanup,
+and locking creator access. The assistant is instructed never to ask for the
+code in normal chat and never to claim creator status on its own.
+
+> The lockout is a speed bump for accidental guesses, not a defence against a
+> rooted or physically compromised device. See [SECURITY.md](SECURITY.md).
+
+## Voice profiles
+
+Settings → **Voice** offers eight presets. Each one selects a Gemini native
+voice and adds a matching delivery direction to the persona.
+
+| Preset | Gemini voice | Character |
+| --- | --- | --- |
+| Zed Prime | Aoede | Warm, sharp, quietly amused — the signature voice |
+| E.V. Mode | Kore | Dry, close, protective partner energy |
+| Spark | Puck | Bright, fast, playful |
+| Gravel | Charon | Low, deadpan, understated |
+| Sentinel | Fenrir | Deep, steady, calm in a crisis |
+| Velvet | Leda | Smooth, unhurried, late-night company |
+| Anchor | Orus | Clear, reassuring, practical |
+| Current | Zephyr | Airy, curious, nimble |
+
+The preset is persisted and resolved at session start. A legacy raw Gemini voice
+name still maps back to the closest preset.
+
+## Appearance
+
+- **Material 3 is the default.** Solid theme surfaces, standard elevation, and
+  no ambient glow fields. This keeps the app lighter on GPU and battery.
+- **Liquid glass is opt-in.** Settings → Appearance → *Liquid glass effects*
+  enables translucent cards, the curved dock trail, and ambient glow. The
+  preference is persisted and shared by every screen through
+  `LocalLiquidGlassEnabled`.
+- **Obsidian black is the default palette.** Pearl light, Ruby red, and Sunset
+  glass are also available.
+- The launcher icon and Home header use the robot-head mark.
+- The dock keeps five destinations and an elevated voice action; the voice
+  action becomes a solid Material 3 button when glass is off.
+
+## Requirements and setup
+
+- Android 8.0 (API 26) or newer.
+- A physical Android phone is strongly recommended for audio testing.
+- JDK 17, Android SDK platform 36, and build-tools 36 for building.
+- A Gemini API key from Google AI Studio.
+
+1. Install the APK or open the project in Android Studio.
+2. Open **Settings → Gemini Live API & model** and paste the key, or build with:
+
+   ```bash
+   GEMINI_API_KEY=your_key ./gradlew :app:assembleDebug
+   # or: ./gradlew :app:assembleDebug -PGEMINI_API_KEY=your_key
+   ```
+
+3. Grant microphone access when you first start a session.
+4. Optionally enable the wake word, overlay, accessibility, and notification
+   permissions from the permissions centre.
+5. Say "I am your creator", enter `160123`, and change the code.
+
+No API key is committed to the repository. The in-app key is stored in private
+preferences. For a public distribution, use ephemeral Live tokens or a backend
+proxy instead of shipping a long-lived key.
+
+## Build and test
 
 ```bash
-./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Compile
+./gradlew :app:compileDebugKotlin
+
+# Unit tests
+./gradlew :app:testDebugUnitTest
+
+# Full debug gate
+./gradlew :app:assembleDebug :app:lintDebug
+
+# Release build (unsigned unless signing values are supplied)
+./gradlew :app:assembleRelease
 ```
 
-Run the full local gate before opening a pull request:
+The GitHub Actions workflow builds the debug APK on pushes and pull requests to
+`main`, runs unit tests, and runs Android lint. Release signing is opt-in and
+documented in [docs/RELEASING.md](docs/RELEASING.md).
 
-```bash
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+The debug APK is written to:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The APK is produced by `.github/workflows/build-apk.yml` on pushes and pull
-requests targeting `main` (artifact `zed-debug-apk`). The workflow also runs the
-unit tests and Android lint.
+## Architecture
+
+```text
+MainActivity
+  └─ MainViewModel ──────────────┐
+                                 │ StateFlow
+ZedEngine (application scoped) ◄─┘
+  ├─ PermissionGateway      runtime permission bridge
+  ├─ GeminiLiveClient       Live WebSocket, setup, audio, tool calls
+  ├─ AudioEngine            AudioRecord capture + AudioTrack queue
+  ├─ DeviceActions          validated intents, contacts, media, system
+  ├─ ZedAccessibilityService screen reading and controlled input
+  ├─ CreatorAuth            local code hash, unlock state, lockout
+  ├─ CreatorChallengeSession TTS prompt + one-shot SpeechRecognizer
+  ├─ ZedPersona             identity, tone, safety boundaries
+  ├─ VoiceProfiles          preset → voice + delivery style
+  ├─ ChatHistoryStore       local SQLite transcript
+  ├─ MemoryStore            local durable facts
+  └─ ZedSessionService      foreground notification while active
+
+Compose UI
+  ├─ HomeScreen / ConversationScreen / SettingsScreen / UpdatesScreen
+  ├─ ZedRobotAvatar         state-driven robot-head presentation
+  ├─ PresenceDialogs        owner voice, overlay, memory, permissions
+  ├─ CreatorAccessDialog    local code challenge UI
+  └─ theme/                 palettes, Material 3, liquid-glass preference
+```
+
+`ZedEngine` is application-scoped so a Live session survives activity
+recreation and short app switches. The UI never opens its own socket,
+microphone, or audio track. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
+the full state and privacy boundaries.
 
 ## Permissions
 
-Requested lazily, not all at startup:
+Permissions are requested lazily, in context:
 
-- `RECORD_AUDIO` — when you first tap the mic.
-- `READ_CONTACTS` — only when `callContact` actually needs to search contacts.
-- `INTERNET` — Live WebSocket.
-- `CALL_PHONE` — requested only at the moment you ask Zed to call someone.
-  If granted, calls use `ACTION_CALL`; if denied, Zed opens the system dialer
-  with the number (`ACTION_DIAL`) and reports that mode honestly.
-- `MODIFY_AUDIO_SETTINGS` — communication audio mode and speaker routing.
-- `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, and
-  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` — only while an active voice session is
-  running, with a visible low-priority notification.
+| Permission | When it is used |
+| --- | --- |
+| `RECORD_AUDIO` | Voice sessions and the optional wake word |
+| `INTERNET`, `ACCESS_NETWORK_STATE` | Gemini Live transport |
+| `READ_CONTACTS` | Only when calling a contact by name |
+| `CALL_PHONE` | Direct call; otherwise the dialer opens |
+| `MODIFY_AUDIO_SETTINGS` | Communication audio route and speaker |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | Local weather lookup |
+| `SYSTEM_ALERT_WINDOW` | Optional floating robot overlay |
+| `POST_NOTIFICATIONS` | Foreground session and wake-word status |
+| `WRITE_SETTINGS` | Screen brightness changes |
+| `QUERY_ALL_PACKAGES` | Finding launchable apps by name |
+| `FOREGROUND_SERVICE*` | Visible services for voice and wake word |
+| Accessibility service | Screen reading and controlled taps, only when asked |
 
-No SMS, phone-state, overlay, or accessibility permissions are requested. The
-foreground-service permissions are used only while an active voice session is
-running.
+Z.E.D. does not request SMS, call-log, or phone-state access. The accessibility
+service is not used to automate anything on its own; it is bound only when the
+user enables it in Android settings.
 
-## Audio correctness details
+## Privacy and security
 
-- Mic: `AudioRecord`, mono, 16-bit PCM, 16 kHz, `VOICE_COMMUNICATION` (falls back
-  to `MIC`), acoustic echo cancellation + noise suppression when available.
-- Sent as `{"realtimeInput":{"audio":{"mimeType":"audio/pcm;rate=16000","data":...}}}`.
-- Received chunks are read from **every** `serverContent.modelTurn.parts[]`
-  entry, Base64-decoded to raw bytes, and the sample rate is read from the MIME
-  type (default 24 kHz) — never assumed to be text.
-- One persistent playback `AudioTrack`, a sequential queue, and a flush on
-  `serverContent.interrupted` or long-press interruption.
-- Audio is never converted through a WAV header or text; PCM16 LE goes straight
-  to the audio hardware.
-- Detailed logs use the `ZedLive`, `ZedAudio`, `ZedActions`, `ZedContacts`,
-  `ZedPermissions` and `ZedEngine` tags. Base64 audio is not logged.
+- API key and creator-code hash live in app-private preferences; Android backup
+  is disabled.
+- Creator codes are PBKDF2-HMAC-SHA256 hashes (120,000 iterations) sealed by an
+  Android Keystore key. The default bootstrap code is never sent to Gemini.
+- Wake-word audio and speaker vectors stay on-device.
+- Microphone audio is streamed only during an active session; the foreground
+  notification is visible for the duration.
+- Base64 audio is never logged.
+- Contacts are read only for an explicit contact-call request.
+- No analytics, advertising SDK, telemetry, or crash-reporting backend is
+  included.
 
-## Android limitations, stated honestly
+See [SECURITY.md](SECURITY.md) for reporting and threat-model notes.
 
-- App launching, contact access and calls are Android-native actions; they only
-  work on a real Android device, not in a browser.
-- WhatsApp must be installed. If it is not, `openWhatsApp` returns
-  `whatsapp_not_installed` and Zed says so.
-- Contacts can be ambiguous. Zed returns the candidates and asks; it never
-  guesses a number.
-- If `CALL_PHONE` is not granted, only the dialer can be opened; Zed reports
+## Android limitations
+
+- App launching, contacts, calls, accessibility, overlay, torch, and brightness
+  changes only work on a real Android device.
+- WhatsApp must be installed. Z.E.D. opens a prefilled compose screen; sending
+  still requires the user's tap.
+- Contacts and app names can be ambiguous. Z.E.D. returns candidates and asks;
+  it never guesses a phone number or package.
+- If `CALL_PHONE` is denied, only the dialer can open. Z.E.D. reports
   `mode: "dialer"` rather than claiming the call connected.
-- The foreground service keeps an explicitly started session alive while the
-  app is backgrounded. Android may still stop microphone use under system or
-  battery policy; Zed reports the resulting disconnect instead of claiming the
-  session is still active.
-- Emulators often have no real microphone/speaker path; test audio on a physical
-  phone.
+- The accessibility service must be enabled by the user. Screen capture is
+  available on Android 11+; older devices can still read the accessibility tree.
+- The wake word uses an English Vosk model. Other languages are handled in the
+  Gemini conversation, not by the wake detector.
+- Emulators often lack a usable microphone/speaker path. Test audio on a
+  physical phone.
+- `QUERY_ALL_PACKAGES` is a broad Android permission. If you distribute on
+  Google Play, review the package-visibility policy and narrow the declaration
+  to the apps you actually support.
 
-## Verification
+## Project layout
 
-Audio, Live, and device actions require a physical device with a valid API key
-and cannot be fully exercised in a build-only environment. The manual smoke
-test is: configure the key, grant microphone permission, start a session, hear
-Gemini voice, switch between spoken and typed turns, interrupt playback, test
-the speaker, and verify one safe device action.
+```text
+app/src/main/
+  assets/
+    model-en-us/               offline Vosk English wake-word model
+    model-spk/                 Vosk speaker-vector model
+    overlay-toys/              floating avatar skins
+    robot-head/                robot-head avatar page
+  java/com/zed/assistant/
+    MainActivity.kt            activity, navigation, global creator dialog
+    ZedSessionService.kt       foreground voice session
+    ZedWakeWordService.kt      offline wake-word service
+    ai/                        engine, Live transport, audio, actions, persona
+    audio/                     Vosk detector, speaker verifier, creator challenge
+    automation/                accessibility service and screen tools
+    data/                      preferences, creator auth, memory, history, weather
+    overlay/                   floating robot overlay service
+    model/                     assistant state and chat turns
+    ui/                        Home, Chat, Settings, Updates, dialogs, avatar
+    ui/components/             Material 3 / liquid-glass design system
+    ui/theme/                  palettes, typography, mode persistence
+    viewmodel/                 MainViewModel
+  res/                         launcher icon, theme, backup rules
+```
 
-## Open-source project
+## Documentation
 
-Zed is MIT licensed and maintained by **ItzFallenMe**. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow,
-[SECURITY.md](SECURITY.md) for responsible reports,
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations,
-[CHANGELOG.md](CHANGELOG.md) for release history, and
-[LICENSE](LICENSE) for the reuse terms. Third-party asset notices are listed in
+- [Architecture](docs/ARCHITECTURE.md) — state ownership, Live lifecycle, tool
+  boundary, creator gate, and privacy layers.
+- [Design](docs/DESIGN.md) — Material 3 default, liquid-glass opt-in, robot
+  avatar, palettes, type, and motion.
+- [Releasing](docs/RELEASING.md) — versioning, signing, tags, and the release
+  checklist.
+- [Contributing](CONTRIBUTING.md) — setup, code layout, tests, and review rules.
+- [Security](SECURITY.md) — reporting, secret handling, and creator-code notes.
+- [Code of Conduct](CODE_OF_CONDUCT.md) — community expectations.
+- [Third-party notices](THIRD_PARTY_NOTICES.md) — avatar, Vosk, and dependency
+  licensing.
+- [Changelog](CHANGELOG.md) — release history.
+
+## License
+
+Z.E.D. is released under the [MIT License](LICENSE). The robot-head avatar
+asset and the bundled Vosk models have their own notices; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

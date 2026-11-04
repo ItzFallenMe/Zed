@@ -22,7 +22,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,33 +48,45 @@ private data class ZedUpdate(
 
 private val updates = listOf(
   ZedUpdate(
-    tag = "1.1 · INTERFACE",
-    title = "Liquid glass, rebuilt around the orb",
-    details = "The Part 7-inspired shell is now native Compose: Pearl, Obsidian, Ruby, and Sunset palettes, a floating curved dock, and a live Three.js particle orb that reacts to Zed's voice state.",
-    icon = Icons.Rounded.Palette
+    tag = "2.0 · CREATOR PROTOCOL",
+    title = "Recognition that stays on the phone",
+    details = "Say “I am your creator” or “activate master control” and Z.E.D. opens a local code challenge. The default first-run code is 160123; change it after unlocking. Codes are hashed with PBKDF2 and sealed with the Android Keystore, with a one-minute lockout after three misses.",
+    icon = Icons.Rounded.Lock
   ),
   ZedUpdate(
-    tag = "CONVERSATION",
-    title = "One thread for voice and typing",
-    details = "Spoken and typed turns share the same Gemini Live session. Completed turns stay in the conversation screen, and the composer shows when Zed is listening, thinking, or speaking.",
+    tag = "2.0 · MASTER CONTROL",
+    title = "The creator gets the keys",
+    details = "Verified creator access unlocks system navigation, lock screen, wake-word and overlay switches, theme control, and memory and conversation controls. The code and the verification never pass through Gemini, and the assistant is told never to ask for it in chat.",
+    icon = Icons.Rounded.Shield
+  ),
+  ZedUpdate(
+    tag = "2.0 · PRESENCE",
+    title = "A robot head that knows what it is doing",
+    details = "The primary orb is now the robot-head avatar. It shifts between idle, thinking, listening, speaking, searching, working, happy, and error to match Z.E.D.'s actual state, on the home stage and in the floating overlay.",
+    icon = Icons.Rounded.AutoAwesome
+  ),
+  ZedUpdate(
+    tag = "2.0 · VOICE",
+    title = "Eight voices, one personality",
+    details = "Choose Zed Prime, E.V. Mode, Spark, Gravel, Sentinel, Velvet, Anchor, or Current. Each preset pairs a different Gemini native voice with a matching delivery direction, so the writing and the sound change together.",
     icon = Icons.Rounded.Mic
   ),
   ZedUpdate(
-    tag = "SAFETY",
-    title = "Device actions with honest results",
-    details = "Open allowlisted apps, WhatsApp, and safe links, or start a call. Zed validates arguments, never guesses an ambiguous contact, and reports dialer fallback instead of claiming a call connected.",
-    icon = Icons.Rounded.Phone
+    tag = "2.0 · PERFORMANCE",
+    title = "Material 3 first, glass when you want it",
+    details = "Solid Material 3 surfaces are the default, with no ambient glow fields or translucent layers. The liquid-glass look is an appearance toggle for devices that can afford it, and the black Obsidian palette remains the default.",
+    icon = Icons.Rounded.Palette
   ),
   ZedUpdate(
-    tag = "PRIVACY",
-    title = "Your key stays on your device",
-    details = "The Gemini API key is stored in private app preferences. Microphone audio is streamed only while a session is active, and the foreground service is visible for the duration of the session.",
-    icon = Icons.Rounded.Lock
+    tag = "HANDS-FREE",
+    title = "Wake word, owner voice, and memory",
+    details = "The offline Vosk wake word, optional speaker-profile enrolment, floating robot overlay, permissions centre, and memory vault are all available in Settings. No audio leaves the device for wake-word detection or speaker vectors.",
+    icon = Icons.Rounded.Mic
   ),
   ZedUpdate(
     tag = "CRAFT",
     title = "Small details that make it feel finished",
-    details = "Haptic-free status transitions, accessible tap and long-press controls, a speaker diagnostic that uses the same AudioTrack as Gemini, and automatic language switching without a picker.",
+    details = "A branded launcher icon, persisted conversation history, speaker diagnostic through the real AudioTrack path, automatic language switching, and truthful device-action results including dialer fallback and WhatsApp prefill.",
     icon = Icons.Rounded.AutoAwesome
   )
 )
@@ -120,14 +132,14 @@ fun ZedUpdatesScreen() {
             )
           }
           Text(
-            text = "Zed 1.1 · Liquid Glass",
+            text = "Z.E.D. 2.0",
             color = palette.textPrimary,
             fontSize = 21.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 14.dp)
           )
           Text(
-            text = "A calmer, faster assistant shell with the orb at the centre.",
+            text = "Zeta Evolved Device Intelligence. Built by Vedant, made to feel like a partner.",
             color = palette.textSecondary,
             fontSize = 13.sp,
             lineHeight = 19.sp,
@@ -135,7 +147,7 @@ fun ZedUpdatesScreen() {
           )
           Row(verticalAlignment = Alignment.CenterVertically) {
             GlassChip(
-              label = "NATIVE ANDROID",
+              label = "CREATOR READY",
               contentColor = palette.accent,
               modifier = Modifier.padding(top = 13.dp)
             )
@@ -156,7 +168,7 @@ fun ZedUpdatesScreen() {
 
       item {
         Text(
-          text = "Crafted by ItzFallenMe · MIT licensed",
+          text = "Created by Vedant · ItzFallenMe · MIT licensed",
           color = palette.textMuted,
           fontSize = 11.sp,
           modifier = Modifier
@@ -179,7 +191,7 @@ private fun RowHeader() {
       fontWeight = FontWeight.Bold
     )
     Text(
-      text = "Zed capabilities and release notes",
+      text = "Z.E.D. capabilities and release notes",
       color = palette.textMuted,
       fontSize = 13.sp,
       modifier = Modifier.padding(top = 4.dp)
@@ -195,7 +207,7 @@ private fun UpdateCard(update: ZedUpdate) {
     shape = RoundedCornerShape(20.dp),
     contentPadding = PaddingValues(16.dp)
   ) {
-    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
       Box(
         modifier = Modifier
           .size(38.dp)

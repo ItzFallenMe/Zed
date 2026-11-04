@@ -11,6 +11,7 @@ import com.zed.assistant.BuildConfig
 import com.zed.assistant.ZedSessionService
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -86,10 +87,9 @@ object ZedEngine {
   private var turnFinished = true
 
   @Volatile
-  private var pendingText: String? = null
-
-  @Volatile
   private var lastSubmittedText: String? = null
+
+  private val queuedText = ConcurrentLinkedQueue<String>()
 
   @Synchronized
   fun initialize(context: Context) {
@@ -118,6 +118,7 @@ object ZedEngine {
       if (isActive.value && turnFinished && state.value == AssistantState.SPEAKING) {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
+        dispatchQueuedText()
       }
     }
 
@@ -144,7 +145,7 @@ object ZedEngine {
 
     val apiKey = resolveApiKey(prefs)
     if (apiKey.isBlank()) {
-      pendingText = null
+      queuedText.clear()
       Log.w(TAG, "Cannot start: no Gemini API key configured")
       errorMessage.value = "Add your Gemini API key in Settings to wake me up."
       status.value = "API key needed"
@@ -172,7 +173,7 @@ object ZedEngine {
       val granted = PermissionGateway.ensure(app, Manifest.permission.RECORD_AUDIO)
       if (!isActive.value) return@launch
       if (!granted) {
-        pendingText = null
+        queuedText.clear()
         Log.e(TAG, "Microphone permission denied")
         errorMessage.value = "Microphone permission is required for voice chat."
         teardown(keepError = true, stateAfter = AssistantState.ERROR)
@@ -200,7 +201,7 @@ object ZedEngine {
     userText.value = ""
     zedText.value = ""
     actionNote.value = null
-    pendingText = null
+    queuedText.clear()
     lastSubmittedText = null
   }
 
@@ -208,23 +209,19 @@ object ZedEngine {
   fun sendText(context: Context, text: String) {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
+    if (queuedText.size >= 20) {
+      errorMessage.value = "Too many messages are queued. Wait for Zed to finish first."
+      return
+    }
+    queuedText.offer(trimmed)
 
     if (!isActive.value) {
-      pendingText = trimmed
       start(context)
       return
     }
 
     if (state.value == AssistantState.SPEAKING) interrupt()
-    userText.value = trimmed
-    zedText.value = ""
-    turnFinished = false
-    status.value = "Sending…"
-    if (client?.sendText(trimmed) != true) {
-      errorMessage.value = "The Live session is still connecting. Try sending again in a moment."
-      return
-    }
-    setState(AssistantState.LISTENING)
+    dispatchQueuedText()
   }
 
   fun clearConversation() {
@@ -353,17 +350,7 @@ object ZedEngine {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
       }
-
-      pendingText?.let { text ->
-        pendingText = null
-        lastSubmittedText = text
-        userText.value = text
-        turnFinished = false
-        status.value = "Sending…"
-        if (client?.sendText(text) != true) {
-          errorMessage.value = "The typed message could not be sent. Try again."
-        }
-      }
+      dispatchQueuedText()
     }
 
     override fun onAudio(pcm: ByteArray, sampleRate: Int) {
@@ -383,6 +370,7 @@ object ZedEngine {
       if (isActive.value) {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
+        dispatchQueuedText()
       }
     }
 
@@ -412,6 +400,7 @@ object ZedEngine {
       if (isActive.value && audioEngine?.isPlayingOrQueued() != true) {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
+        dispatchQueuedText()
       }
     }
 
@@ -435,6 +424,7 @@ object ZedEngine {
       if (isActive.value && audioEngine?.isPlayingOrQueued() != true) {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
+        dispatchQueuedText()
       }
     }
 
@@ -559,7 +549,7 @@ object ZedEngine {
 
   private fun teardown(keepError: Boolean, stateAfter: AssistantState) {
     isActive.value = false
-    pendingText = null
+    queuedText.clear()
     lastSubmittedText = null
     client?.close()
     client = null
@@ -570,6 +560,24 @@ object ZedEngine {
     if (!keepError) errorMessage.value = null
     appContext?.let { ZedSessionService.stop(it) }
     setState(stateAfter)
+  }
+
+  /** Sends queued typed turns only after Live is ready and the current turn ends. */
+  private fun dispatchQueuedText() {
+    if (!isActive.value || state.value == AssistantState.CONNECTING || !turnFinished) return
+    val text = queuedText.poll() ?: return
+    if (client?.sendText(text) != true) {
+      queuedText.add(text)
+      errorMessage.value = "The Live session is still connecting. Your message is queued."
+      return
+    }
+
+    lastSubmittedText = text
+    userText.value = text
+    zedText.value = ""
+    turnFinished = false
+    status.value = "Waiting for Zed…"
+    setState(AssistantState.LISTENING)
   }
 
   private fun setState(newState: AssistantState) {

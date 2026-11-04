@@ -6,9 +6,10 @@ WebSocket API, and Gemini's native audio output is played through a persistent
 `AudioTrack`. There is no browser, no WebView, no `SpeechSynthesis`, no
 pre-recorded audio, and no hard-coded reply.
 
-The visual language (dark screen, red/purple orb, waveform, mic control) is
-adapted from the supplied Myra reference app; the engine, UI state, audio
-pipeline and device actions were rewritten for Zed.
+The product UI combines a focused voice orb with a full assistant shell: Home,
+Conversation, Voice, Settings, and Updates are available from a floating dock.
+The engine, UI state, audio pipeline, and device actions are implemented for
+Zed as a single native Android application.
 
 ## What it does
 
@@ -37,8 +38,15 @@ mic (16 kHz PCM16)
   handling, and truthful tool results.
 - **Real UI states.** `IDLE`, `CONNECTING`, `LISTENING`, `SPEAKING`, `ERROR`
   drive the orb, waveform, status text and controls.
+- **Complete assistant shell.** The Home dashboard, typed Conversation screen,
+  session history, Updates screen, grouped Settings screen, and floating voice
+  dock are all backed by the same stateful engine.
+- **Typed and spoken turns.** Typed messages use the same Gemini Live session as
+  microphone input and completed turns remain available in the current session.
 - **Speaker diagnostic.** Settings → *Test speaker* plays 440 Hz through the
   exact `AudioTrack` output graph used by Gemini audio.
+- **Foreground session continuity.** An Android foreground service keeps an
+  active voice session alive while the user temporarily switches apps.
 
 ## Model
 
@@ -69,8 +77,14 @@ app/src/main/java/com/zed/assistant/
     PermissionGateway.kt       coroutine <-> runtime permission bridge
     ZedPersona.kt              Zed system instruction
   model/AssistantState.kt
-  ui/                          Compose main screen, orb, waveform, settings
+  model/ChatMessage.kt         completed conversation turn model
+  ui/                          Compose screens, orb, waveform, navigation dock
+    HomeScreen.kt              Home dashboard and quick actions
+    ConversationScreen.kt      typed and spoken conversation
+    UpdatesScreen.kt            capability and release notes
+    NavigationDock.kt           bottom navigation and voice control
   viewmodel/MainViewModel.kt
+  ZedSessionService.kt         foreground notification for active sessions
 ```
 
 ## Setup
@@ -109,9 +123,12 @@ Requested lazily, not all at startup:
   If granted, calls use `ACTION_CALL`; if denied, Zed opens the system dialer
   with the number (`ACTION_DIAL`) and reports that mode honestly.
 - `MODIFY_AUDIO_SETTINGS` — communication audio mode and speaker routing.
+- `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MICROPHONE` — only while an
+  active voice session is running, with a visible low-priority notification.
 
-No SMS, phone-state, overlay, accessibility, or background-service permissions
-are requested.
+No SMS, phone-state, overlay, or accessibility permissions are requested. The
+foreground-service permissions are used only while an active voice session is
+running.
 
 ## Audio correctness details
 
@@ -138,18 +155,31 @@ are requested.
   guesses a number.
 - If `CALL_PHONE` is not granted, only the dialer can be opened; Zed reports
   `mode: "dialer"` rather than claiming the call connected.
-- The session stops when the app leaves the foreground (`onStop`), because this
-  build does not implement a microphone foreground service. Adding one would be
-  the next step for always-on background use.
+- The foreground service keeps an explicitly started session alive while the
+  app is backgrounded. Android may still stop microphone use under system or
+  battery policy; Zed reports the resulting disconnect instead of claiming the
+  session is still active.
 - Emulators often have no real microphone/speaker path; test audio on a physical
   phone.
 
 ## Verification
 
-`./gradlew clean :app:assembleDebug :app:lintDebug` passes with **0 lint
-errors** (17 non-blocking warnings), and the debug APK verifies with
-`apksigner`. Audio/Live/device actions require a physical device with a valid
-API key and cannot be exercised in this build environment; see the manual test
-list in the task description (mic → Live → audible Gemini voice, language
-switching, WhatsApp/app open, number call, contact ambiguity, interruption,
-speaker test).
+The repository is checked by the Android build workflow on every push to
+`main`. Local verification should include:
+
+```bash
+./gradlew :app:compileDebugKotlin
+./gradlew :app:assembleDebug :app:lintDebug
+```
+
+Audio, Live, and device actions require a physical device with a valid API key
+and cannot be fully exercised in a build-only environment. The manual smoke
+test is: configure the key, grant microphone permission, start a session, hear
+Gemini voice, switch between spoken and typed turns, interrupt playback, test
+the speaker, and verify one safe device action.
+
+## Open-source project
+
+Zed is maintained by ItzFallenMe. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the development workflow, [SECURITY.md](SECURITY.md) for responsible reports,
+and [LICENSE](LICENSE) for the reuse terms.

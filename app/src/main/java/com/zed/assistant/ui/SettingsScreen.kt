@@ -2,8 +2,10 @@ package com.zed.assistant.ui
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,9 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -35,14 +39,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import com.zed.assistant.BuildConfig
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.ui.theme.Background
+import com.zed.assistant.ui.theme.Border
 import com.zed.assistant.ui.theme.Cards
 import com.zed.assistant.ui.theme.Hint
 import com.zed.assistant.ui.theme.PrimaryRed
@@ -89,7 +96,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         navigationIcon = {
           IconButton(onClick = onBack) {
             Icon(
-              imageVector = Icons.Rounded.ArrowBack,
+              imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
               contentDescription = "Back",
               tint = PrimaryText
             )
@@ -108,6 +115,47 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         .padding(horizontal = 20.dp, vertical = 8.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+      SectionLabel("ZED OPERATOR")
+
+      Surface(
+        color = Cards.copy(alpha = 0.92f),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, Border)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth().padding(16.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Surface(
+            color = PrimaryRed.copy(alpha = 0.16f),
+            shape = RoundedCornerShape(14.dp)
+          ) {
+            Text(
+              text = "Z",
+              color = PrimaryRed,
+              fontSize = 22.sp,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+            )
+          }
+          Column(modifier = Modifier.padding(start = 12.dp)) {
+            Text(
+              text = userName.ifBlank { "Operator" },
+              color = PrimaryText,
+              fontSize = 16.sp,
+              fontWeight = FontWeight.Bold
+            )
+            Text(
+              text = "ZED OPERATOR · PERSONAL AI COMPANION",
+              color = Hint,
+              fontSize = 9.sp,
+              letterSpacing = 0.8.sp,
+              modifier = Modifier.padding(top = 4.dp)
+            )
+          }
+        }
+      }
+
       SectionLabel("GEMINI LIVE")
 
       OutlinedTextField(
@@ -172,7 +220,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryText)
       ) {
         Icon(
-          imageVector = Icons.Rounded.VolumeUp,
+          imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
           contentDescription = null,
           modifier = Modifier.padding(end = 8.dp)
         )
@@ -201,12 +249,12 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 
       Button(
         onClick = {
-          prefs.edit()
-            .putString(ZedEngine.KEY_API_KEY, apiKey.trim())
-            .putString(ZedEngine.KEY_USER_NAME, userName.trim())
-            .putString(ZedEngine.KEY_MODEL, model)
-            .putString(ZedEngine.KEY_VOICE, voice)
-            .apply()
+          prefs.edit {
+            putString(ZedEngine.KEY_API_KEY, apiKey.trim())
+            putString(ZedEngine.KEY_USER_NAME, userName.trim())
+            putString(ZedEngine.KEY_MODEL, model)
+            putString(ZedEngine.KEY_VOICE, voice)
+          }
           onBack()
         },
         modifier = Modifier
@@ -226,7 +274,15 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         fontSize = 11.sp,
         modifier = Modifier.fillMaxWidth()
       )
-      Spacer(modifier = Modifier.height(20.dp))
+      Spacer(modifier = Modifier.height(8.dp))
+      SectionLabel("ABOUT ZED")
+      Text(
+        text = "Built by ItzFallenMe. Zed is an open-source native Android assistant focused on private, user-controlled voice interaction.",
+        color = Hint,
+        fontSize = 11.sp,
+        lineHeight = 16.sp
+      )
+      Spacer(modifier = Modifier.height(96.dp))
     }
   }
 }
@@ -250,7 +306,7 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
   focusedContainerColor = Cards,
   unfocusedContainerColor = Cards,
   focusedBorderColor = PrimaryRed,
-  unfocusedBorderColor = Cards,
+  unfocusedBorderColor = Border,
   cursorColor = PrimaryRed
 )
 

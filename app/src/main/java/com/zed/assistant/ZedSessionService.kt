@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -39,7 +38,6 @@ class ZedSessionService : Service() {
     .build()
 
   private fun createNotificationChannel() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val channel = NotificationChannel(
       CHANNEL_ID,
       "Active voice session",
@@ -58,11 +56,7 @@ class ZedSessionService : Service() {
     fun start(context: Context): Boolean {
       return runCatching {
         val intent = Intent(context, ZedSessionService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-          ContextCompat.startForegroundService(context, intent)
-        } else {
-          context.startService(intent)
-        }
+        ContextCompat.startForegroundService(context, intent)
       }.isSuccess
     }
 

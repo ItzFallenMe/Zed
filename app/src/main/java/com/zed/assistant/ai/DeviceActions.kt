@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -107,7 +108,7 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
     }
 
     val uri = try {
-      Uri.parse(candidate)
+      candidate.toUri()
     } catch (error: Exception) {
       Log.e(TAG, "Invalid URL: $input", error)
       return failure("openUrl", "invalid_url")
@@ -148,7 +149,7 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
       PermissionGateway.ensure(context, Manifest.permission.CALL_PHONE)
 
     if (canCallDirectly) {
-      val callIntent = Intent(Intent.ACTION_CALL, Uri.parse(tel))
+      val callIntent = Intent(Intent.ACTION_CALL, tel.toUri())
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       try {
         withContext(Dispatchers.Main) { context.startActivity(callIntent) }
@@ -164,7 +165,7 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
       }
     }
 
-    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse(tel))
+    val dialIntent = Intent(Intent.ACTION_DIAL, tel.toUri())
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return if (launch(dialIntent)) {
       Log.d(TAG, "Opened dialer with $tel")

@@ -413,8 +413,10 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
         "note",
         if (click.optBoolean("success")) {
           "The first matching video was tapped; use controlMedia to pause or skip."
+        } else if (click.optString("error") == "accessibility_service_not_connected") {
+          "YouTube results are open. Zed's accessibility permission is enabled, but Android has not connected the service yet."
         } else {
-          "YouTube results are open; enable accessibility to auto-play a result."
+          "YouTube results are open. Enable Zed's accessibility service in Android Settings to allow auto-play."
         }
       )
       if (!click.optBoolean("success")) put("autoPlayError", click.optString("error"))

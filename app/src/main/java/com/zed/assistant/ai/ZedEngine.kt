@@ -725,7 +725,6 @@ object ZedEngine {
     val action = rawAction.trim().lowercase()
 
     return when (action) {
-      "lock_screen" -> ZedAccessibilityService.press("lock_screen")
       "go_home" -> ZedAccessibilityService.press("home")
       "go_back" -> ZedAccessibilityService.press("back")
       "open_recents" -> ZedAccessibilityService.press("recents")

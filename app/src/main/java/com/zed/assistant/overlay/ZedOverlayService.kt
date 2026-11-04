@@ -318,7 +318,12 @@ class ZedOverlayService : android.app.Service() {
     }
 
     fun sync(context: Context) {
-      if (ZedPreferences(context).overlayEnabled) start(context) else stop(context)
+      if (ZedPreferences(context).overlayEnabled) {
+        stop(context)
+        start(context)
+      } else {
+        stop(context)
+      }
     }
   }
 }

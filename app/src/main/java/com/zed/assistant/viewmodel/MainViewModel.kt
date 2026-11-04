@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.model.AssistantState
+import com.zed.assistant.model.ChatMessage
 import kotlinx.coroutines.flow.StateFlow
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -16,6 +17,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   val errorMessage: StateFlow<String?> = ZedEngine.errorMessage
   val isActive: StateFlow<Boolean> = ZedEngine.isActive
   val level: StateFlow<Float> = ZedEngine.level
+  val chatTurns: StateFlow<List<ChatMessage>> = ZedEngine.chatTurns
 
   init {
     ZedEngine.initialize(application)
@@ -42,4 +44,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   fun hasApiKey(): Boolean = ZedEngine.hasApiKey(getApplication())
+
+  fun sendText(text: String) {
+    ZedEngine.sendText(getApplication(), text)
+  }
+
+  fun clearConversation() {
+    ZedEngine.clearConversation()
+  }
 }

@@ -170,6 +170,34 @@ class GeminiLiveClient(
     }
   }
 
+  /** Send a typed turn through the same Live session used by microphone input. */
+  fun sendText(text: String): Boolean {
+    val trimmed = text.trim()
+    if (trimmed.isBlank()) return false
+    val socket = webSocket
+    if (socket == null || !setupComplete) {
+      Log.w(TAG, "Cannot send typed text before the Live session is ready")
+      return false
+    }
+
+    val payload = JSONObject().put(
+      "clientContent",
+      JSONObject()
+        .put(
+          "turns",
+          JSONArray().put(
+            JSONObject()
+              .put("role", "user")
+              .put("parts", JSONArray().put(JSONObject().put("text", trimmed)))
+          )
+        )
+        .put("turnComplete", true)
+    )
+    val sent = socket.send(payload.toString())
+    if (!sent) Log.w(TAG, "Typed text could not be sent")
+    return sent
+  }
+
   fun sendToolResponse(results: List<Pair<ToolCallRequest, JSONObject>>) {
     if (results.isEmpty()) return
     val responses = JSONArray()

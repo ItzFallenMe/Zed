@@ -10,6 +10,7 @@ import android.util.Log
 import com.zed.assistant.BuildConfig
 import com.zed.assistant.ZedSessionService
 import com.zed.assistant.model.AssistantState
+import com.zed.assistant.model.ChatMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +56,7 @@ object ZedEngine {
   val errorMessage = MutableStateFlow<String?>(null)
   val isActive = MutableStateFlow(false)
   val level = MutableStateFlow(0f)
+  val chatTurns = MutableStateFlow<List<ChatMessage>>(emptyList())
 
   // Internals -------------------------------------------------------------
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -82,6 +84,12 @@ object ZedEngine {
 
   @Volatile
   private var turnFinished = true
+
+  @Volatile
+  private var pendingText: String? = null
+
+  @Volatile
+  private var lastSubmittedText: String? = null
 
   @Synchronized
   fun initialize(context: Context) {
@@ -136,6 +144,7 @@ object ZedEngine {
 
     val apiKey = resolveApiKey(prefs)
     if (apiKey.isBlank()) {
+      pendingText = null
       Log.w(TAG, "Cannot start: no Gemini API key configured")
       errorMessage.value = "Add your Gemini API key in Settings to wake me up."
       status.value = "API key needed"
@@ -153,6 +162,7 @@ object ZedEngine {
     reconnectAttempts = 0
     sessionHandle = null
     turnFinished = true
+    lastSubmittedText = null
     setState(AssistantState.CONNECTING)
     status.value = "Connecting to Gemini Live…"
 
@@ -162,6 +172,7 @@ object ZedEngine {
       val granted = PermissionGateway.ensure(app, Manifest.permission.RECORD_AUDIO)
       if (!isActive.value) return@launch
       if (!granted) {
+        pendingText = null
         Log.e(TAG, "Microphone permission denied")
         errorMessage.value = "Microphone permission is required for voice chat."
         teardown(keepError = true, stateAfter = AssistantState.ERROR)
@@ -189,6 +200,37 @@ object ZedEngine {
     userText.value = ""
     zedText.value = ""
     actionNote.value = null
+    pendingText = null
+    lastSubmittedText = null
+  }
+
+  /** Start a session if needed, then send a typed turn over Gemini Live. */
+  fun sendText(context: Context, text: String) {
+    val trimmed = text.trim()
+    if (trimmed.isBlank()) return
+
+    if (!isActive.value) {
+      pendingText = trimmed
+      start(context)
+      return
+    }
+
+    if (state.value == AssistantState.SPEAKING) interrupt()
+    userText.value = trimmed
+    zedText.value = ""
+    turnFinished = false
+    status.value = "Sending…"
+    if (client?.sendText(trimmed) != true) {
+      errorMessage.value = "The Live session is still connecting. Try sending again in a moment."
+      return
+    }
+    setState(AssistantState.LISTENING)
+  }
+
+  fun clearConversation() {
+    chatTurns.value = emptyList()
+    userText.value = ""
+    zedText.value = ""
   }
 
   /** Long-press / explicit "stop talking" action. */
@@ -311,6 +353,17 @@ object ZedEngine {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
       }
+
+      pendingText?.let { text ->
+        pendingText = null
+        lastSubmittedText = text
+        userText.value = text
+        turnFinished = false
+        status.value = "Sending…"
+        if (client?.sendText(text) != true) {
+          errorMessage.value = "The typed message could not be sent. Try again."
+        }
+      }
     }
 
     override fun onAudio(pcm: ByteArray, sampleRate: Int) {
@@ -335,6 +388,7 @@ object ZedEngine {
 
     override fun onUserTranscript(text: String, isFinal: Boolean) {
       userText.value = text
+      if (text.isNotBlank()) lastSubmittedText = text
     }
 
     override fun onZedTranscript(text: String) {
@@ -342,8 +396,18 @@ object ZedEngine {
     }
 
     override fun onTurnComplete(userTranscript: String, zedTranscript: String) {
-      if (userTranscript.isNotBlank()) userText.value = userTranscript
+      val completedUserText = userTranscript.ifBlank { lastSubmittedText.orEmpty() }
+      if (completedUserText.isNotBlank()) userText.value = completedUserText
       if (zedTranscript.isNotBlank()) zedText.value = zedTranscript
+      if (completedUserText.isNotBlank() && zedTranscript.isNotBlank() &&
+        chatTurns.value.lastOrNull()?.text != zedTranscript
+      ) {
+        chatTurns.value = chatTurns.value + listOf(
+          ChatMessage(ChatMessage.Role.USER, completedUserText),
+          ChatMessage(ChatMessage.Role.ASSISTANT, zedTranscript)
+        )
+      }
+      lastSubmittedText = null
       turnFinished = true
       if (isActive.value && audioEngine?.isPlayingOrQueued() != true) {
         setState(AssistantState.LISTENING)
@@ -495,6 +559,8 @@ object ZedEngine {
 
   private fun teardown(keepError: Boolean, stateAfter: AssistantState) {
     isActive.value = false
+    pendingText = null
+    lastSubmittedText = null
     client?.close()
     client = null
     audioEngine?.stopRecording()

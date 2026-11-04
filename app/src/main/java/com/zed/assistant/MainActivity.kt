@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -16,10 +17,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import com.zed.assistant.ai.PermissionGateway
-import com.zed.assistant.ui.MainScreen
 import com.zed.assistant.ui.SettingsScreen
+import com.zed.assistant.ui.ZedBottomDock
+import com.zed.assistant.ui.ZedChatScreen
+import com.zed.assistant.ui.ZedHomeScreen
+import com.zed.assistant.ui.ZedTab
+import com.zed.assistant.ui.ZedUpdatesScreen
 import com.zed.assistant.ui.theme.ZedTheme
 import com.zed.assistant.viewmodel.MainViewModel
 
@@ -85,17 +92,35 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ZedApp(viewModel: MainViewModel) {
-  var showSettings by rememberSaveable { mutableStateOf(false) }
+  var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
+  val selectedTab = ZedTab.values()[selectedTabIndex.coerceIn(0, ZedTab.values().lastIndex)]
+  val state by viewModel.state.collectAsStateWithLifecycle()
 
-  if (showSettings) {
-    SettingsScreen(
-      viewModel = viewModel,
-      onBack = { showSettings = false }
-    )
-  } else {
-    MainScreen(
-      viewModel = viewModel,
-      onSettingsClick = { showSettings = true }
+  BackHandler(enabled = selectedTab != ZedTab.HOME) {
+    selectedTabIndex = 0
+  }
+
+  Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
+    when (selectedTab) {
+      ZedTab.HOME -> ZedHomeScreen(
+        viewModel = viewModel,
+        onChat = { selectedTabIndex = ZedTab.CHAT.ordinal },
+        onSettings = { selectedTabIndex = ZedTab.SETTINGS.ordinal }
+      )
+      ZedTab.CHAT -> ZedChatScreen(viewModel)
+      ZedTab.SETTINGS -> SettingsScreen(
+        viewModel = viewModel,
+        onBack = { selectedTabIndex = ZedTab.HOME.ordinal }
+      )
+      ZedTab.UPDATES -> ZedUpdatesScreen()
+    }
+
+    ZedBottomDock(
+      selectedTab = selectedTab,
+      state = state,
+      onTabSelected = { selectedTabIndex = it.ordinal },
+      onMicClick = { viewModel.toggleSession() },
+      onMicLongClick = { viewModel.interrupt() }
     )
   }
 }

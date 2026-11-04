@@ -96,6 +96,60 @@ class ZedAccessibilityService : AccessibilityService() {
     }
   }
 
+  /** Click Send in WhatsApp's compose screen after a deep-link launch. */
+  fun clickWhatsAppSend(): JSONObject {
+    val candidates = listOf("send", "send message", "send now")
+    for (candidate in candidates) {
+      val result = clickElement(candidate)
+      if (result.optBoolean("success")) return result
+    }
+    return failure("clickElement", "send_button_not_found")
+  }
+
+  /** Pick the first plausible video result on a YouTube search screen. */
+  fun clickYouTubeResult(query: String): JSONObject {
+    val root = rootInActiveWindow
+      ?: return failure("clickElement", "no_active_window")
+    val tokens = normalize(query).split(' ').filter { it.length >= 3 }
+    var best: AccessibilityNodeInfo? = null
+    var bestScore = 0
+    walk(root, 280) { node ->
+      val text = listOf(node.text, node.contentDescription)
+        .mapNotNull { it?.toString() }
+        .joinToString(" ")
+      if (text.isBlank()) return@walk true
+      val normalized = normalize(text)
+      if (normalized.startsWith("search") || normalized == "search") return@walk true
+      val hasDuration = Regex("\\b\\d{1,2}:\\d{2}\\b").containsMatchIn(text)
+      val hasMetadata = normalized.contains("view") || normalized.contains("ago")
+      if (!hasDuration && !hasMetadata) return@walk true
+      val titleHits = tokens.count { normalized.contains(it) }
+      val bounds = Rect()
+      node.getBoundsInScreen(bounds)
+      if (bounds.top < resources.displayMetrics.heightPixels * 0.12f) return@walk true
+      val score = (if (hasDuration) 20 else 0) + titleHits * 10 +
+        (if (node.isClickable) 8 else 0) + (bounds.top / 200).coerceAtMost(6)
+      if (score > bestScore) {
+        bestScore = score
+        best = node
+      }
+      true
+    }
+    val match = best ?: return failure("clickElement", "video_result_not_found")
+    var clickable: AccessibilityNodeInfo? = match
+    while (clickable != null && !clickable.isClickable) clickable = clickable.parent
+    if (clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+      return success("clickElement") { put("target", describe(match)).put("mode", "video_result") }
+    }
+    val bounds = Rect()
+    match.getBoundsInScreen(bounds)
+    return if (tap(bounds.exactCenterX(), bounds.exactCenterY())) {
+      success("clickElement") { put("target", describe(match)).put("mode", "gesture") }
+    } else {
+      failure("clickElement", "video_click_rejected")
+    }
+  }
+
   fun typeText(text: String, targetHint: String? = null): JSONObject {
     val target = if (!targetHint.isNullOrBlank()) {
       findBestNode(targetHint, editable = true)
@@ -371,6 +425,12 @@ class ZedAccessibilityService : AccessibilityService() {
     fun screenText(): String = instance?.readText().orEmpty()
 
     fun click(query: String): JSONObject = instance?.clickElement(query)
+      ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
+
+    fun clickSend(): JSONObject = instance?.clickWhatsAppSend()
+      ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
+
+    fun clickYouTubeResult(query: String): JSONObject = instance?.clickYouTubeResult(query)
       ?: JSONObject().put("success", false).put("error", "accessibility_service_disabled")
 
     fun type(text: String, targetHint: String?): JSONObject = instance?.typeText(text, targetHint)

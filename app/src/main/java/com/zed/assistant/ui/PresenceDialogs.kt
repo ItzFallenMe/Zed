@@ -81,7 +81,7 @@ fun OwnerVoiceDialog(
       Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
           if (active) {
-            "Your speaker profile is active on this device. It is used only for local speaker matching; it does not lock you out of the assistant."
+            "Your speaker profile is active on this device. When enabled, the wake word opens only for your enrolled voice. Manual taps remain available."
           } else {
             "Record three short samples of your normal speaking voice. The model runs fully on-device; recordings are discarded after a speaker vector is extracted."
           },

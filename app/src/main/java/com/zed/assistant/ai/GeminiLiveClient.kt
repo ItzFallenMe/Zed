@@ -370,10 +370,16 @@ class GeminiLiveClient(
     declarations.put(
       functionDeclaration(
         name = "sendWhatsAppMessage",
-        description = "Open a WhatsApp chat with a saved contact and prefill a message. The user still taps send; never claim the message was delivered.",
+        description = "Send a WhatsApp message to a saved contact. Set sendNow=true only when the user explicitly asks to send it; otherwise the chat is prefilled for confirmation. Never claim delivery unless the result says auto_send_tapped, and even then delivery is confirmed by WhatsApp.",
         properties = JSONObject()
           .put("contactName", JSONObject().put("type", "STRING").put("description", "Saved contact name."))
-          .put("message", JSONObject().put("type", "STRING").put("description", "Message text to prefill.")),
+          .put("message", JSONObject().put("type", "STRING").put("description", "Message text."))
+          .put(
+            "sendNow",
+            JSONObject()
+              .put("type", "BOOLEAN")
+              .put("description", "True only when the user explicitly asked to send without another confirmation tap.")
+          ),
         required = JSONArray().put("contactName").put("message")
       )
     )
@@ -385,6 +391,18 @@ class GeminiLiveClient(
         properties = JSONObject().put(
           "query",
           JSONObject().put("type", "STRING").put("description", "Search query as the user said it.")
+        ),
+        required = JSONArray().put("query")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
+        name = "playYouTube",
+        description = "Search YouTube and tap the first matching video result. Requires accessibility to auto-play; otherwise returns the results page.",
+        properties = JSONObject().put(
+          "query",
+          JSONObject().put("type", "STRING").put("description", "Song, video or topic to play.")
         ),
         required = JSONArray().put("query")
       )
@@ -548,6 +566,61 @@ class GeminiLiveClient(
 
     declarations.put(
       functionDeclaration(
+        name = "runTask",
+        description = "Run a short, ordered sequence of phone actions in one go. Use for genuinely multi-step requests (open an app, search, tap a result, type a message). Every step is declared up front; execution stops at the first failure. Do not use for passwords, payments or destructive actions.",
+        properties = JSONObject()
+          .put("goal", JSONObject().put("type", "STRING").put("description", "One-line user goal."))
+          .put(
+            "steps",
+            JSONObject()
+              .put("type", "ARRAY")
+              .put("description", "Ordered steps, at most 12.")
+              .put(
+                "items",
+                JSONObject()
+                  .put("type", "OBJECT")
+                  .put(
+                    "properties",
+                    JSONObject()
+                      .put(
+                        "op",
+                        JSONObject().put("type", "STRING").put(
+                          "enum",
+                          JSONArray(
+                            listOf(
+                              "open_app", "open_url", "whatsapp", "youtube", "media",
+                              "volume", "brightness", "flashlight", "call", "tap", "type",
+                              "scroll", "press", "inspect", "look", "wait"
+                            )
+                          )
+                        )
+                      )
+                      .put("appName", JSONObject().put("type", "STRING"))
+                      .put("url", JSONObject().put("type", "STRING"))
+                      .put("contactName", JSONObject().put("type", "STRING"))
+                      .put("phoneNumber", JSONObject().put("type", "STRING"))
+                      .put("message", JSONObject().put("type", "STRING"))
+                      .put("sendNow", JSONObject().put("type", "BOOLEAN"))
+                      .put("query", JSONObject().put("type", "STRING"))
+                      .put("mediaAction", JSONObject().put("type", "STRING"))
+                      .put("percent", JSONObject().put("type", "INTEGER"))
+                      .put("on", JSONObject().put("type", "BOOLEAN"))
+                      .put("text", JSONObject().put("type", "STRING"))
+                      .put("targetHint", JSONObject().put("type", "STRING"))
+                      .put("direction", JSONObject().put("type", "STRING"))
+                      .put("key", JSONObject().put("type", "STRING"))
+                      .put("waitMs", JSONObject().put("type", "INTEGER"))
+                      .put("expect", JSONObject().put("type", "STRING").put("description", "Optional text that must appear on screen after the step."))
+                  )
+                  .put("required", JSONArray().put("op"))
+              )
+          ),
+        required = JSONArray().put("goal").put("steps")
+      )
+    )
+
+    declarations.put(
+      functionDeclaration(
         name = "creatorControl",
         description = "Creator-only master control for system actions and Zed's own settings. This only works after the user verifies creator access locally in the app. If it returns creator_access_required, tell the user to verify in Settings > Creator access; never ask for the code in conversation.",
         properties = JSONObject().put(
@@ -563,7 +636,8 @@ class GeminiLiveClient(
                   "open_notifications", "open_quick_settings", "clear_memory",
                   "clear_conversation", "enable_wake_word", "disable_wake_word",
                   "enable_overlay", "disable_overlay", "set_dark_theme",
-                  "set_light_theme", "lock_creator"
+                  "set_light_theme", "enable_screen_context",
+                  "disable_screen_context", "lock_creator"
                 )
               )
             )

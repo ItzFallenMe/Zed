@@ -12,8 +12,11 @@ ZedEngine (application scoped) ◄───────────────�
   ├─ PermissionGateway          runtime permission bridge
   ├─ GeminiLiveClient           Live WebSocket, setup, tool dispatch
   ├─ AudioEngine                AudioRecord capture + AudioTrack queue
+  ├─ HeadsetAudioRouter        communication-device selection
   ├─ DeviceActions              intents, contacts, media, system controls
   ├─ ZedAccessibilityService    screen tree, clicks, text, scroll, lock
+  ├─ AgentTaskEngine            bounded ordered multi-step actions
+  ├─ ScreenCaptureService       MediaProjection JPEG frames
   ├─ CreatorAuth                code hash, unlock state, lockout
   ├─ CreatorChallengeSession    TTS prompt + one-shot SpeechRecognizer
   ├─ ZedPersona                 identity, tone, safety boundaries
@@ -75,21 +78,38 @@ report the result honestly.
 
 | Area | Examples |
 | --- | --- |
-| Apps | `openApp`, `openWhatsApp`, `openUrl`, `searchYouTube` |
-| Communication | `makeCall`, `callContact` |
-| Media and system | `setVolume`, `mediaControl`, `setBrightness`, `setFlashlight` |
+| Apps | `openApp`, `openWhatsApp`, `openUrl`, `searchYouTube`, `playYouTube` |
+| Communication | `makeCall`, `callContact`, `sendWhatsAppMessage` with optional `sendNow` |
+| Media and system | `setVolume`, `controlMedia`, `setBrightness`, `setFlashlight` |
 | Information | `getTime`, `getWeather` |
-| Screen | `inspectScreen`, `clickText`, `typeText`, `scroll`, `pressKey` |
+| Screen | `inspectScreen`, `clickElement`, `typeText`, `scrollScreen`, `pressKey` |
+| Multi-step | `runTask` → `AgentTaskEngine` |
 | Creator only | `creatorControl` |
 
 `DeviceActions` validates arguments and never guesses an ambiguous contact,
 package, or number. If `CALL_PHONE` is denied, it opens the dialer and reports
-`mode: "dialer"`. WhatsApp handoff opens a prefilled compose screen; Z.E.D. does
-not claim the message was sent.
+`mode: "dialer"`. WhatsApp handoff opens a prefilled compose screen; with
+`sendNow` and accessibility it taps Send and reports `auto_send_tapped`. Z.E.D.
+never claims delivery. YouTube auto-play follows the same rule: a tapped result
+is `auto_play_tapped`; otherwise the result is a results-page fallback.
 
 `ZedAccessibilityService` is a normal bound accessibility service. It is used
-only for an explicit screen request and never automates the device in the
-background. `pressKey("lock_screen")` is additionally gated by creator access.
+only for an explicit screen/action request and never automates the device in
+the background. `pressKey("lock_screen")` is additionally gated by creator
+access. The accessibility helpers also require the service to be enabled;
+every caller receives a structured `accessibility_service_disabled` result
+rather than a silent no-op.
+
+### Multi-step tasks
+
+`runTask` accepts a goal and at most 12 declared steps. `AgentTaskEngine` runs
+them sequentially through the same `DeviceActions` and accessibility helpers as
+single tool calls. Each step has a 5-second maximum wait and an optional
+`expect` string that is checked against the accessibility tree. The engine
+stops at the first failure, returns the completed step count and failed step,
+and never retries a partially applied action automatically. Progress is written
+to `ZedEngine.status`, which both the conversation UI and overlay observe.
+Long-press on the overlay cancels at the next safe boundary.
 
 ## Creator gate
 
@@ -108,6 +128,10 @@ Creator verification is deliberately local:
    is never forwarded to Gemini.
 6. On success, `creatorUnlocked` is persisted and `creatorControl` becomes
    available. The creator can change the code or lock access at any time.
+7. `AppIntegrity` optionally pins the signing certificate. When
+   `ZED_SIGNING_CERT_SHA256` is configured, a mismatch blocks master control
+   with `app_signature_mismatch`. An unpinned build is transparent about not
+   being pinned.
 
 The first-run code is `160123`. It is a bootstrap secret, not a remote
 credential. The gate is designed to stop accidental access and casual guessing
@@ -138,8 +162,32 @@ system permission screen immediately reflects the saved preference.
 
 Owner-voice enrolment records three short samples, extracts x-vector embeddings
 with the bundled speaker model, and stores the vectors in private preferences.
-The profile is used for local speaker matching and does not replace the creator
-code.
+`WakeWordDetector` keeps a rolling six-second PCM pre-roll; when the profile is
+enabled, `ZedWakeWordService` verifies that pre-roll before opening a session
+and shows a "Voice not recognized" notification on a mismatch. The profile is a
+local similarity check, not biometric authentication, and does not replace the
+creator code.
+
+`AudioEngine` creates a `HeadsetAudioRouter` for each session. The router picks
+a Bluetooth/wired/USB/BLE communication device (or SCO on older APIs), falls back
+to the loudspeaker only when no headset exists, and restores the previous mode
+and speaker state when the session ends.
+
+## Screen context
+
+Live screen context has two paths:
+
+- `ScreenCaptureService` is a `mediaProjection` foreground service. Settings
+  launches the system consent dialog, then starts the service with the returned
+  grant. Every capture shows an ongoing notification with a Stop action. The
+  service downsamples to a 640-pixel edge and sends a JPEG about every two
+  seconds through `ZedEngine.sendScreenFrame`.
+- If projection is unavailable, `ZedEngine` falls back to accessibility
+  screenshots at the same cadence. The fallback stops automatically when the
+  projection service starts.
+
+Either path stops when the conversation tears down, when the user taps Stop, or
+when Android revokes projection.
 
 ## Presentation boundary
 
@@ -166,8 +214,11 @@ file. Changing either recomposes the UI without touching the engine.
 - Base64 audio is never logged.
 - Contacts are read only for an explicit contact-call request.
 - Location is requested only for a weather request.
+- Screen frames are captured only with active MediaProjection consent (or the
+  accessibility fallback the user enabled) and only while a session is active.
 - No analytics, advertising, telemetry, or crash-reporting SDK is included.
-- The foreground notification is visible while a microphone session runs.
+- Foreground notifications are visible while the microphone or screen capture
+  is active.
 
 ## Failure behaviour
 
@@ -176,6 +227,9 @@ The app prefers a truthful failure over a confident lie:
 - missing WhatsApp → `whatsapp_not_installed`
 - ambiguous contact → candidate list, no call
 - denied phone permission → dialer fallback with `mode: "dialer"`
-- unavailable accessibility → explicit `accessibility_not_enabled`
+- unavailable accessibility → explicit `accessibility_service_disabled`
 - denied overlay permission → overlay remains off and Settings explains why
+- failed task step → completed/failed step counts, no automatic retry
+- screen projection revoked → foreground service stops and the fallback resumes
+- signing pin mismatch → `app_signature_mismatch`, no master control
 - dropped Live socket → resume or expose retry; never claim the session is live

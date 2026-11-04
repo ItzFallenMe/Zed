@@ -70,6 +70,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ZedThemeRepository.setLiquidGlass(getApplication(), enabled)
   }
 
+  fun setScreenContext(enabled: Boolean) {
+    ZedEngine.setScreenContext(getApplication(), enabled)
+  }
+
   fun requestCreatorChallenge(voice: Boolean = false) {
     ZedEngine.requestCreatorChallenge(voice)
   }

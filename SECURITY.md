@@ -3,7 +3,7 @@
 ## Supported versions
 
 Security fixes are applied to the latest commit on `main` and to the latest
-tagged release. Z.E.D. 2.0.0 is the current supported release line.
+tagged release. Z.E.D. 2.1.0 is the current supported release line.
 
 ## Reporting a vulnerability
 
@@ -39,6 +39,9 @@ in source, Gradle files, screenshots, commits, CI logs, or issue comments.
 - The code and the speech-recognition transcript never pass through Gemini.
 - Three failed attempts trigger a persisted 60-second lockout.
 - Creator access remains unlocked until the creator explicitly locks it.
+- `ZED_SIGNING_CERT_SHA256` can pin the signing certificate. When set, a
+  mismatch blocks `creatorControl` with `app_signature_mismatch`; an unsigned or
+  debug build is not magically trusted by leaving the pin blank.
 
 ### Threat boundaries
 
@@ -64,6 +67,13 @@ remote attestation and no server-side verification.
 - `WRITE_SETTINGS` allows brightness changes.
 - `READ_CONTACTS` and `CALL_PHONE` are used only for explicit call requests.
 - Location is used only for an explicit weather request.
+- MediaProjection is started only after the system consent dialog and only for
+  an active session. A persistent notification with a Stop action is shown for
+  the whole capture, and teardown stops it. When accessibility is enabled,
+  Z.E.D. can tap Send in WhatsApp and tap a YouTube result; it reports those
+  taps but cannot prove delivery or playback.
+- Owner-voice matching is a local speaker-similarity check, not a biometric
+  authentication factor. It gates wake-word starts only; manual taps remain.
 
 Report any path where one of these can be triggered without a user request or a
 structured tool result.

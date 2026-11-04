@@ -9,6 +9,12 @@ val geminiApiKey = (project.findProperty("GEMINI_API_KEY") as String?)
     ?: System.getenv("GEMINI_API_KEY")
     ?: ""
 
+// Optional certificate pin for creator master control. Leave blank for debug
+// builds; set it to the release certificate's SHA-256 for a pinned build.
+val signingCertSha256 = (project.findProperty("ZED_SIGNING_CERT_SHA256") as String?)
+    ?: System.getenv("ZED_SIGNING_CERT_SHA256")
+    ?: ""
+
 // Release signing is opt-in and never committed. Maintainers provide these
 // through the local shell, Gradle user properties, or CI secrets.
 val releaseStorePath = (project.findProperty("ZED_RELEASE_STORE_FILE") as String?)
@@ -20,6 +26,10 @@ val releaseKeyAlias = (project.findProperty("ZED_RELEASE_KEY_ALIAS") as String?)
 val releaseKeyPassword = (project.findProperty("ZED_RELEASE_KEY_PASSWORD") as String?)
     ?: System.getenv("ZED_RELEASE_KEY_PASSWORD")
 
+// Release CI opts into per-ABI APKs so ARMv8 phones can download a smaller
+// native payload than the universal build. Local and debug builds stay universal.
+val abiSplitsEnabled = (project.findProperty("zedAbiSplits") as String?) == "true"
+
 android {
   namespace = "com.zed.assistant"
   compileSdk = 36
@@ -28,13 +38,18 @@ android {
     applicationId = "com.zed.assistant"
     minSdk = 26
     targetSdk = 36
-    versionCode = 20
-    versionName = "2.0.0"
+    versionCode = 21
+    versionName = "2.1.0"
 
     buildConfigField(
       "String",
       "GEMINI_API_KEY",
       "\"${geminiApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    )
+    buildConfigField(
+      "String",
+      "EXPECTED_SIGNATURE_SHA256",
+      "\"${signingCertSha256.replace("\\", "\\\\").replace("\"", "\\\"")}\""
     )
   }
 
@@ -68,6 +83,15 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+
+  splits {
+    abi {
+      isEnable = abiSplitsEnabled
+      reset()
+      include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+      isUniversalApk = true
+    }
   }
 
   packaging {

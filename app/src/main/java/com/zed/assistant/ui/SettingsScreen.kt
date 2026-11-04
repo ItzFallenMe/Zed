@@ -1,12 +1,16 @@
 package com.zed.assistant.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -79,6 +84,7 @@ import com.zed.assistant.ZedWakeWordService
 import com.zed.assistant.ai.PermissionGateway
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.overlay.ZedOverlayService
+import com.zed.assistant.screen.ScreenCaptureService
 import com.zed.assistant.data.CreatorGate
 import com.zed.assistant.data.ZedPreferences
 import com.zed.assistant.data.ZedVoiceProfiles
@@ -127,6 +133,22 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
   var ownerVoiceEnabled by remember { mutableStateOf(zedPrefs.isOwnerVoiceEnabled) }
   var overlayToy by remember { mutableStateOf(zedPrefs.overlayToy) }
   var soundEffectsEnabled by remember { mutableStateOf(zedPrefs.soundEffectsEnabled) }
+  var screenContextEnabled by remember { mutableStateOf(zedPrefs.screenContextEnabled) }
+  val screenCaptureLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    val data = result.data
+    if (result.resultCode == Activity.RESULT_OK && data != null) {
+      ScreenCaptureService.start(context, result.resultCode, data)
+      screenContextEnabled = true
+      zedPrefs.screenContextEnabled = true
+      viewModel.setScreenContext(true)
+    } else {
+      screenContextEnabled = false
+      zedPrefs.screenContextEnabled = false
+      viewModel.setScreenContext(false)
+    }
+  }
 
   val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
   val liquidGlass by viewModel.liquidGlass.collectAsStateWithLifecycle()
@@ -234,9 +256,9 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             icon = Icons.Rounded.Shield,
             title = "Owner voice",
             subtitle = if (ownerVoiceEnabled) {
-              "Speaker profile active · three local samples"
+              "Wake word only opens for your enrolled voice"
             } else {
-              "Optional on-device voice profile"
+              "Optional on-device wake-word speaker check"
             },
             onClick = { activeDialog = DIALOG_OWNER_VOICE },
             trailing = {
@@ -285,6 +307,27 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             title = "Overlay avatar style",
             subtitle = overlayToy.replaceFirstChar { it.uppercase() },
             onClick = { activeDialog = DIALOG_OVERLAY_STYLE }
+          )
+          GroupDivider()
+          SettingToggleRow(
+            icon = Icons.Rounded.Visibility,
+            title = "Live screen context",
+            subtitle = "Sends a downscaled frame about every 2.5 s while talking",
+            checked = screenContextEnabled,
+            onCheckedChange = { enabled ->
+              if (!enabled) {
+                screenContextEnabled = false
+                zedPrefs.screenContextEnabled = false
+                viewModel.setScreenContext(false)
+              } else {
+                val manager = context.getSystemService(MediaProjectionManager::class.java)
+                if (manager == null) {
+                  Toast.makeText(context, "Screen capture is unavailable", Toast.LENGTH_SHORT).show()
+                } else {
+                  screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                }
+              }
+            }
           )
           GroupDivider()
           SettingToggleRow(

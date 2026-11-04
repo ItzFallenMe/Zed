@@ -13,11 +13,13 @@ build/
 # Local machine configuration
 local.properties
 .env
+.secrets/
 debug.keystore
 *.jks
 *.keystore
 
 # Generated artifacts
+/dist/
 *.apk
 *.aab
 *.log

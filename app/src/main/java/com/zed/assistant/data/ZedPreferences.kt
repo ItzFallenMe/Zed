@@ -26,6 +26,7 @@ class ZedPreferences(context: Context) {
     const val KEY_VOICE_PRESET = "gemini_voice_preset"
     const val KEY_USER_NAME = "user_name"
     const val KEY_LIQUID_GLASS = "liquid_glass_enabled"
+    private const val KEY_SCREEN_CONTEXT = "screen_context_enabled"
 
     private const val TAG = "ZedPreferences"
     private const val KEY_WAKE_WORD_ENABLED = "wake_word_enabled"
@@ -96,6 +97,11 @@ class ZedPreferences(context: Context) {
   var soundEffectsEnabled: Boolean
     get() = prefs.getBoolean(KEY_SOUND_EFFECTS, true)
     set(value) = prefs.edit { putBoolean(KEY_SOUND_EFFECTS, value) }
+
+  /** Sends a downscaled screen frame about every two seconds while a session is active. */
+  var screenContextEnabled: Boolean
+    get() = prefs.getBoolean(KEY_SCREEN_CONTEXT, false)
+    set(value) = prefs.edit { putBoolean(KEY_SCREEN_CONTEXT, value) }
 
   var memoryEnabled: Boolean
     get() = prefs.getBoolean(KEY_MEMORY_ENABLED, true)

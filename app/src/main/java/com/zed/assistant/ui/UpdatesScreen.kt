@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +48,24 @@ private data class ZedUpdate(
 )
 
 private val updates = listOf(
+  ZedUpdate(
+    tag = "2.1 · MULTI-STEP",
+    title = "Tasks that stop when something breaks",
+    details = "Ask for an ordered job — open an app, search, tap a result, type a message — and Zed runs up to twelve declared steps through the same permission-checked actions. Progress appears in the status line and overlay. The first failure stops the task and is reported instead of guessed past.",
+    icon = Icons.Rounded.AutoAwesome
+  ),
+  ZedUpdate(
+    tag = "2.1 · HANDS",
+    title = "WhatsApp send and YouTube play, honestly",
+    details = "With accessibility on, Zed can tap Send in a WhatsApp chat or tap the best matching YouTube result. Results say auto_send_tapped or auto_play_tapped only when the tap happened; otherwise you get the prefilled chat or results page, never a claim that delivery or playback was confirmed.",
+    icon = Icons.Rounded.Shield
+  ),
+  ZedUpdate(
+    tag = "2.1 · PRESENCE",
+    title = "Headsets, owner voice, and screen context",
+    details = "Voice sessions route to a Bluetooth, wired, USB, or BLE headset when one is connected. An enrolled owner voice now gates the wake word. Live screen context uses MediaProjection with a visible stop action, or an accessibility-frame fallback.",
+    icon = Icons.Rounded.Visibility
+  ),
   ZedUpdate(
     tag = "2.0 · CREATOR PROTOCOL",
     title = "Recognition that stays on the phone",
@@ -86,7 +105,7 @@ private val updates = listOf(
   ZedUpdate(
     tag = "CRAFT",
     title = "Small details that make it feel finished",
-    details = "A branded launcher icon, persisted conversation history, speaker diagnostic through the real AudioTrack path, automatic language switching, and truthful device-action results including dialer fallback and WhatsApp prefill.",
+    details = "A branded launcher icon, saved-history and memory browsers, speaker diagnostic through the real AudioTrack path, automatic language switching, and truthful device-action results including dialer fallback, prefilled chats, tapped sends, and results-page fallbacks.",
     icon = Icons.Rounded.AutoAwesome
   )
 )
@@ -132,7 +151,7 @@ fun ZedUpdatesScreen() {
             )
           }
           Text(
-            text = "Z.E.D. 2.0",
+            text = "Z.E.D. 2.1",
             color = palette.textPrimary,
             fontSize = 21.sp,
             fontWeight = FontWeight.Bold,

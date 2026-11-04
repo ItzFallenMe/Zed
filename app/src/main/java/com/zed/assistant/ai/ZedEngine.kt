@@ -13,9 +13,11 @@ import androidx.core.content.ContextCompat
 import com.zed.assistant.BuildConfig
 import com.zed.assistant.ZedSessionService
 import com.zed.assistant.ZedWakeWordService
+import com.zed.assistant.automation.AgentTaskEngine
 import com.zed.assistant.automation.ZedAccessibilityService
 import com.zed.assistant.audio.CreatorChallengeSession
 import com.zed.assistant.audio.VoskModelManager
+import com.zed.assistant.data.AppIntegrity
 import com.zed.assistant.data.ChatHistoryStore
 import com.zed.assistant.data.CreatorAuth
 import com.zed.assistant.data.CreatorGate
@@ -26,6 +28,7 @@ import com.zed.assistant.data.ZedVoiceProfiles
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
 import com.zed.assistant.overlay.ZedOverlayService
+import com.zed.assistant.screen.ScreenCaptureService
 import com.zed.assistant.ui.theme.ZedThemeMode
 import com.zed.assistant.ui.theme.ZedThemeRepository
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -114,6 +117,7 @@ object ZedEngine {
   private var memory: MemoryStore? = null
   private var weather: WeatherRepository? = null
   private var avatarResetJob: Job? = null
+  private var screenFrameJob: Job? = null
   private var creatorChallenge: CreatorChallengeSession? = null
 
   @Volatile
@@ -257,6 +261,8 @@ object ZedEngine {
     Log.d(TAG, "Stopping session")
     manualStop = true
     avatarResetJob?.cancel()
+    screenFrameJob?.cancel()
+    screenFrameJob = null
     avatarState.value = "idle"
     pendingGoAwayReconnect = false
     handler.removeCallbacksAndMessages(null)
@@ -438,6 +444,7 @@ object ZedEngine {
         setState(AssistantState.LISTENING)
         status.value = "Listening…"
       }
+      startScreenContext()
       dispatchQueuedText()
     }
 
@@ -607,12 +614,20 @@ object ZedEngine {
         if (name.isBlank() || message.isBlank()) {
           toolFailure(call.name, "missing_contact_or_message")
         } else {
-          executor.sendWhatsAppMessage(name, message)
+          executor.sendWhatsAppMessage(
+            name,
+            message,
+            sendNow = call.args.optBoolean("sendNow", false)
+          )
         }
       }
       "searchYouTube" -> {
         val query = call.args.optString("query")
         if (query.isBlank()) toolFailure(call.name, "empty_query") else executor.searchYouTube(query)
+      }
+      "playYouTube" -> {
+        val query = call.args.optString("query")
+        if (query.isBlank()) toolFailure(call.name, "empty_query") else executor.playYouTube(query)
       }
       "controlMedia" -> executor.controlMedia(call.args.optString("mediaAction", "play_pause"))
       "setVolume" -> executor.setVolume(call.args.optInt("level", 50))
@@ -633,6 +648,7 @@ object ZedEngine {
       }
       "scrollScreen" -> ZedAccessibilityService.scroll(call.args.optString("direction", "down"))
       "pressKey" -> ZedAccessibilityService.press(call.args.optString("key", "back"))
+      "runTask" -> executeAgentTask(executor, call.args)
       "creatorControl" -> executeCreatorControl(call.args.optString("action"))
       "lookAtScreen" -> {
         val jpeg = ZedAccessibilityService.screenshotJpeg()
@@ -682,9 +698,59 @@ object ZedEngine {
     }
   }
 
+  private suspend fun executeAgentTask(
+    executor: DeviceActions,
+    args: JSONObject
+  ): JSONObject {
+    val goal = args.optString("goal").ifBlank { "Multi-step task" }
+    val rawSteps = args.optJSONArray("steps")
+      ?: return toolFailure("runTask", "missing_steps")
+    val steps = buildList {
+      for (index in 0 until rawSteps.length()) {
+        rawSteps.optJSONObject(index)?.let { add(AgentTaskEngine.Step.from(it)) }
+      }
+    }
+    if (steps.isEmpty()) return toolFailure("runTask", "empty_steps")
+    if (!ZedAccessibilityService.isConnected()) {
+      val needsUi = steps.any {
+        it.op in setOf("tap", "type", "scroll", "press", "inspect", "look")
+      }
+      if (needsUi) return toolFailure("runTask", "accessibility_service_disabled")
+    }
+    status.value = "Planning task…"
+    avatarState.value = "working"
+    return AgentTaskEngine.run(
+      goal = goal,
+      steps = steps,
+      executor = executor,
+      onProgress = { status.value = it },
+      onFrame = { frame -> client?.sendVideoFrame(frame) }
+    ).also { result ->
+      status.value = if (result.optBoolean("success")) {
+        "Task complete"
+      } else {
+        "Task stopped: ${result.optString("error").replace('_', ' ')}"
+      }
+      if (isActive.value) {
+        setState(AssistantState.LISTENING)
+        syncAvatar()
+      }
+    }
+  }
+
+  /** Stops a multi-step task at the next safe boundary. */
+  fun cancelTask() {
+    AgentTaskEngine.cancel()
+    status.value = "Stopping task…"
+  }
+
   private fun executeCreatorControl(rawAction: String): JSONObject {
     if (!creatorUnlocked.value) return toolFailure("creatorControl", "creator_access_required")
     val app = appContext ?: return toolFailure("creatorControl", "not_initialized")
+    if (!AppIntegrity.isTrusted(app)) {
+      Log.w(TAG, "Master control blocked: signing certificate does not match the pin")
+      return toolFailure("creatorControl", "app_signature_mismatch")
+    }
     val prefs = preferences ?: ZedPreferences(app).also { preferences = it }
     val action = rawAction.trim().lowercase()
 
@@ -730,6 +796,14 @@ object ZedEngine {
         prefs.overlayEnabled = false
         ZedOverlayService.sync(app)
         creatorSuccess(action, "Floating avatar disabled")
+      }
+      "enable_screen_context" -> {
+        setScreenContext(app, true)
+        creatorSuccess(action, "Live screen context enabled")
+      }
+      "disable_screen_context" -> {
+        setScreenContext(app, false)
+        creatorSuccess(action, "Live screen context disabled")
       }
       "set_dark_theme" -> {
         ZedThemeRepository.set(app, ZedThemeMode.DARK)
@@ -787,6 +861,11 @@ object ZedEngine {
         "typeText" -> "Text entered"
         "scrollScreen" -> "Scrolled ${result.optString("direction")}"
         "pressKey" -> "Pressed ${result.optString("key")}"
+        "runTask" -> if (result.optBoolean("success")) {
+          "Completed ${result.optInt("completedSteps")} task steps"
+        } else {
+          "Task stopped: ${result.optString("error").replace('_', ' ')}"
+        }
         "lookAtScreen" -> "Took a look at your screen"
         "rememberFact" -> "Saved to memory"
         "forgetMemory" -> "Memory updated"
@@ -974,6 +1053,8 @@ object ZedEngine {
 
   private fun teardown(keepError: Boolean, stateAfter: AssistantState) {
     isActive.value = false
+    screenFrameJob?.cancel()
+    screenFrameJob = null
     queuedText.clear()
     lastSubmittedText = null
     client?.close()
@@ -983,6 +1064,7 @@ object ZedEngine {
     audioEngine?.endAudioSession()
     level.value = 0f
     if (!keepError) errorMessage.value = null
+    appContext?.let { ScreenCaptureService.stop(it) }
     appContext?.let { ZedSessionService.stop(it) }
     setState(stateAfter)
   }
@@ -1003,6 +1085,46 @@ object ZedEngine {
     turnFinished = false
     status.value = "Waiting for Zed…"
     setState(AssistantState.LISTENING)
+  }
+
+  private fun startScreenContext() {
+    screenFrameJob?.cancel()
+    screenFrameJob = null
+    if (preferences?.screenContextEnabled != true) return
+    // MediaProjection already streams frames through sendScreenFrame().
+    if (ScreenCaptureService.isRunning) return
+    screenFrameJob = scope.launch {
+      while (isActive.value && preferences?.screenContextEnabled == true) {
+        if (ScreenCaptureService.isRunning) break
+        delay(2_500L)
+        if (!isActive.value) break
+        val jpeg = ZedAccessibilityService.screenshotJpeg() ?: continue
+        client?.sendVideoFrame(jpeg)
+      }
+    }
+  }
+
+  /** Called by the MediaProjection service with a downscaled JPEG frame. */
+  fun sendScreenFrame(jpeg: ByteArray) {
+    if (isActive.value && preferences?.screenContextEnabled == true && jpeg.isNotEmpty()) {
+      client?.sendVideoFrame(jpeg)
+    }
+  }
+
+  /** Resume the accessibility fallback if a projection ends during a session. */
+  fun onScreenProjectionStopped() {
+    if (isActive.value && preferences?.screenContextEnabled == true) startScreenContext()
+  }
+
+  fun setScreenContext(context: Context, enabled: Boolean) {
+    initialize(context)
+    preferences?.screenContextEnabled = enabled
+    if (enabled && isActive.value) startScreenContext() else {
+      screenFrameJob?.cancel()
+      screenFrameJob = null
+    }
+    if (!enabled) appContext?.let { ScreenCaptureService.stop(it) }
+    actionNote.value = if (enabled) "Live screen context enabled" else "Live screen context disabled"
   }
 
   private fun setState(newState: AssistantState) {

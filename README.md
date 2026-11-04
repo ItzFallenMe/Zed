@@ -6,7 +6,7 @@
 
 [![Build](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml/badge.svg)](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-8B5CF6.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.0-8B5CF6.svg)](CHANGELOG.md)
 ![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)
 
 </div>
@@ -41,26 +41,26 @@ to feel like a partner in the room, not a command line with a voice.
 - [Documentation](#documentation)
 - [License](#license)
 
-## What's new in 2.0
+## What's new in 2.1
 
-Version 2.0.0 is the first complete release of Z.E.D. It brings together the
-conversation engine, hands-free presence, device automation, memory, creator
-access, and the final visual identity:
+Version 2.1.0 closes the advanced automation and presence gaps from 2.0.0:
 
-- **Creator recognition** by spoken or typed phrase, a local code challenge,
-  Keystore-sealed PBKDF2 storage, and a persisted lockout after repeated misses.
-- **Master control** for a guarded set of system, presence, theme, memory, and
-  conversation actions.
-- **Robot-head avatar** as the primary assistant stage, with real state changes for idle,
-  thinking, listening, speaking, searching, working, happy, and error.
-- **Eight voice presets**, each pairing a Gemini native voice with its own
-  delivery direction.
-- **Material 3 by default**, with liquid glass as an optional, persisted
-  appearance mode for devices that can afford the GPU cost.
-- **Offline wake word, optional owner-voice enrolment, floating overlay, memory
-  vault, and a permissions centre** in Settings.
-- **Branded launcher icon and wordmark**, plus a full documentation and release
-  pass for the 2.0.0 tag.
+- **Multi-step tasks** through a bounded `runTask` tool, with per-step progress
+  in the status line and overlay, and a stop-at-first-failure rule.
+- **Direct WhatsApp sending** and **YouTube auto-play** as accessibility-assisted
+  handoffs. Results distinguish a tapped Send/play button from a prefilled chat
+  or a results page; delivery and playback are never assumed.
+- **Headset routing** for Bluetooth, wired, USB, and BLE headsets, with the
+  loudspeaker used only when no headset is connected.
+- **Owner-voice wake enforcement**: an enrolled profile is checked before the
+  wake word opens a session. Manual taps still work for the owner.
+- **Live screen context** through a visible MediaProjection foreground service,
+  with an accessibility-frame fallback and a one-tap stop action.
+- **Saved-history browser** in the chat header, plus the existing memory vault.
+- **Optional signing-certificate pinning** that blocks creator master control
+  when the installed certificate does not match the configured pin.
+- **Material 3 by default**, liquid glass as an opt-in, the robot-head stage,
+  eight voice presets, offline wake word, overlay, and the creator protocol.
 
 The full release history, including the consolidated 1.x milestones, is in
 [CHANGELOG.md](CHANGELOG.md).
@@ -92,9 +92,11 @@ The full release history, including the consolidated 1.x milestones, is in
   speaking, searching, working, happy, and error.
 - **Offline wake word** using a bundled Vosk English model. The wake detector
   runs on-device; wake audio is not sent to Gemini.
-- **Optional owner-voice enrolment**: three samples produce a local speaker
-  vector stored in private preferences. The profile is for local speaker
-  matching and does not replace the creator code.
+- **Optional owner-voice enrolment and wake enforcement**: three samples
+  produce a local speaker vector stored in private preferences. When enabled,
+  the wake word verifies the recent audio pre-roll and ignores a mismatched
+  voice. The profile is not a biometric lock and does not replace the creator
+  code.
 - **Floating robot overlay** with a selectable toy skin. It requires the
   "display over other apps" permission and can be toggled from Settings.
 - **Wake chime** toggle for a quiet confirmation when hands-free listening
@@ -106,9 +108,13 @@ Z.E.D. can act through declared tools, and every tool returns a structured
 result instead of inventing success:
 
 - Open any launchable app by name, with ambiguity handling.
-- Open WhatsApp or WhatsApp Business and prefill a message or phone number.
+- Open WhatsApp or WhatsApp Business and prefill a message or phone number, or
+  ask to send immediately when accessibility is enabled.
 - Open an `https` link in the default browser.
-- Search YouTube, open a video result, or hand off to the YouTube app.
+- Search YouTube or ask Z.E.D. to play a result; auto-play is a best-effort
+  accessibility tap with a results-page fallback.
+- Run a bounded, ordered multi-step task through `runTask`, with progress and an
+  explicit stopped/failed result instead of an invented success.
 - Read the current time, date, and weather.
 - Set volume, control media playback, set brightness, and toggle the flashlight.
 - Start a call or open the dialer when `CALL_PHONE` is unavailable.
@@ -122,6 +128,8 @@ result instead of inventing success:
   screen.
 - The memory vault stores durable facts the user explicitly asks Z.E.D. to
   remember.
+- The chat header opens a saved-history browser, and Settings opens the memory
+  vault; both are local and independently clearable.
 - The creator panel can clear memory, clear conversation history, or lock
   creator access.
 
@@ -247,14 +255,17 @@ ZedEngine (application scoped) ◄─┘
   ├─ PermissionGateway      runtime permission bridge
   ├─ GeminiLiveClient       Live WebSocket, setup, audio, tool calls
   ├─ AudioEngine            AudioRecord capture + AudioTrack queue
+  ├─ HeadsetAudioRouter     Bluetooth/wired/USB communication route
   ├─ DeviceActions          validated intents, contacts, media, system
   ├─ ZedAccessibilityService screen reading and controlled input
+  ├─ AgentTaskEngine        bounded multi-step actions
   ├─ CreatorAuth            local code hash, unlock state, lockout
   ├─ CreatorChallengeSession TTS prompt + one-shot SpeechRecognizer
   ├─ ZedPersona             identity, tone, safety boundaries
   ├─ VoiceProfiles          preset → voice + delivery style
   ├─ ChatHistoryStore       local SQLite transcript
   ├─ MemoryStore            local durable facts
+  ├─ ScreenCaptureService   MediaProjection frames while sharing
   └─ ZedSessionService      foreground notification while active
 
 Compose UI
@@ -280,14 +291,15 @@ Permissions are requested lazily, in context:
 | `INTERNET`, `ACCESS_NETWORK_STATE` | Gemini Live transport |
 | `READ_CONTACTS` | Only when calling a contact by name |
 | `CALL_PHONE` | Direct call; otherwise the dialer opens |
-| `MODIFY_AUDIO_SETTINGS` | Communication audio route and speaker |
+| `MODIFY_AUDIO_SETTINGS` | Communication audio route, headset, and speaker |
 | `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | Local weather lookup |
 | `SYSTEM_ALERT_WINDOW` | Optional floating robot overlay |
 | `POST_NOTIFICATIONS` | Foreground session and wake-word status |
 | `WRITE_SETTINGS` | Screen brightness changes |
 | `QUERY_ALL_PACKAGES` | Finding launchable apps by name |
-| `FOREGROUND_SERVICE*` | Visible services for voice and wake word |
-| Accessibility service | Screen reading and controlled taps, only when asked |
+| `FOREGROUND_SERVICE*` | Visible services for voice, wake word, and screen sharing |
+| MediaProjection consent | Live screen context; asked each time sharing starts |
+| Accessibility service | Screen reading, controlled taps, direct send, and task steps |
 
 Z.E.D. does not request SMS, call-log, or phone-state access. The accessibility
 service is not used to automate anything on its own; it is bound only when the
@@ -302,6 +314,9 @@ user enables it in Android settings.
 - Wake-word audio and speaker vectors stay on-device.
 - Microphone audio is streamed only during an active session; the foreground
   notification is visible for the duration.
+- Screen frames are sent only while live screen context is enabled and a session
+  is active. MediaProjection shows a persistent notification with a Stop action;
+  ending the session stops capture automatically.
 - Base64 audio is never logged.
 - Contacts are read only for an explicit contact-call request.
 - No analytics, advertising SDK, telemetry, or crash-reporting backend is
@@ -313,14 +328,23 @@ See [SECURITY.md](SECURITY.md) for reporting and threat-model notes.
 
 - App launching, contacts, calls, accessibility, overlay, torch, and brightness
   changes only work on a real Android device.
-- WhatsApp must be installed. Z.E.D. opens a prefilled compose screen; sending
-  still requires the user's tap.
+- WhatsApp must be installed. Without accessibility, Z.E.D. opens a prefilled
+  compose screen and the user taps Send. With accessibility, it can tap Send,
+  but delivery is still confirmed only by WhatsApp.
+- YouTube auto-play depends on the current YouTube layout and accessibility
+  labels. Z.E.D. reports a results-page fallback when it cannot identify a
+  video to tap.
 - Contacts and app names can be ambiguous. Z.E.D. returns candidates and asks;
   it never guesses a phone number or package.
 - If `CALL_PHONE` is denied, only the dialer can open. Z.E.D. reports
   `mode: "dialer"` rather than claiming the call connected.
-- The accessibility service must be enabled by the user. Screen capture is
-  available on Android 11+; older devices can still read the accessibility tree.
+- The accessibility service must be enabled by the user for taps, typing,
+  direct WhatsApp send, YouTube auto-play, and the screen-frame fallback.
+  MediaProjection requires the system consent dialog each time sharing starts;
+  on Android 14+ the foreground service type is declared explicitly.
+- Owner-voice matching is a local speaker-similarity check, not biometric
+  authentication. It can reject a cold or distant voice and is not a security
+  boundary.
 - The wake word uses an English Vosk model. Other languages are handled in the
   Gemini conversation, not by the wake detector.
 - Emulators often lack a usable microphone/speaker path. Test audio on a
@@ -344,8 +368,9 @@ app/src/main/
     ZedWakeWordService.kt      offline wake-word service
     ai/                        engine, Live transport, audio, actions, persona
     audio/                     Vosk detector, speaker verifier, creator challenge
-    automation/                accessibility service and screen tools
-    data/                      preferences, creator auth, memory, history, weather
+    automation/                accessibility service, screen tools, task runner
+    data/                      preferences, creator auth, integrity, memory, history, weather
+    screen/                    MediaProjection foreground capture service
     overlay/                   floating robot overlay service
     model/                     assistant state and chat turns
     ui/                        Home, Chat, Settings, Updates, dialogs, avatar

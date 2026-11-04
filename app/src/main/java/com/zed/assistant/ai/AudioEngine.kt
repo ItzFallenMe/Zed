@@ -16,6 +16,7 @@ import android.Manifest
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.zed.assistant.audio.HeadsetAudioRouter
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +81,7 @@ class AudioEngine(context: Context) {
   private var previousMode = AudioManager.MODE_NORMAL
   private var previousSpeakerphone = false
   private var sessionConfigured = false
+  private var headsetRouter: HeadsetAudioRouter? = null
 
   private val _level = MutableStateFlow(0f)
   val level: StateFlow<Float> = _level
@@ -106,11 +108,11 @@ class AudioEngine(context: Context) {
       previousSpeakerphone = manager.isSpeakerphoneOn
       sessionConfigured = true
     }
+    var route = "default"
     try {
-      // Communication mode plus speakerphone keeps output audible and gives the
-      // platform the best chance of cancelling Zed's own voice from the mic.
-      manager.mode = AudioManager.MODE_IN_COMMUNICATION
-      manager.isSpeakerphoneOn = true
+      // Prefer a connected headset, otherwise the loudspeaker. Never leave the
+      // call earpiece as the accidental route when no headset is attached.
+      headsetRouter = HeadsetAudioRouter(appContext).also { route = it.route() }
     } catch (error: Exception) {
       Log.e(TAG, "Could not configure audio routing", error)
     }
@@ -129,7 +131,7 @@ class AudioEngine(context: Context) {
     }
 
     startPlayback()
-    Log.d(TAG, "Audio session ready (mode=${manager.mode}, speaker=${manager.isSpeakerphoneOn})")
+    Log.d(TAG, "Audio session ready (mode=${manager.mode}, route=$route, speaker=${manager.isSpeakerphoneOn})")
   }
 
   fun endAudioSession() {
@@ -138,6 +140,8 @@ class AudioEngine(context: Context) {
     if (manager != null) {
       focusRequest?.let { manager.abandonAudioFocusRequest(it) }
       focusRequest = null
+      headsetRouter?.restore()
+      headsetRouter = null
       if (sessionConfigured) {
         try {
           manager.isSpeakerphoneOn = previousSpeakerphone

@@ -10,6 +10,45 @@ one continuous line rather than a jump from 1.1.0 to 2.0.0.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-04
+
+Advanced automation and presence pass. Every new action reports what it
+actually did, including partial handoffs.
+
+### Added
+
+- Bounded `runTask` tool and `AgentTaskEngine` for ordered multi-step phone
+  actions: open an app, tap, type, scroll, inspect, wait, and verify expected
+  text. Execution stops at the first failure and progress appears in the status
+  line and floating overlay.
+- WhatsApp direct-send path. `sendWhatsAppMessage` accepts `sendNow`; Z.E.D.
+  waits for the compose screen and taps Send through accessibility, returning
+  `auto_send_tapped` only when the tap succeeded. Delivery is still confirmed by
+  WhatsApp.
+- `playYouTube` tool. It opens results and taps the best matching video when
+  accessibility is enabled, returning `auto_play_tapped` or a results-page
+  fallback.
+- Headset-aware audio routing for Bluetooth SCO, wired, USB, and BLE headsets,
+  with the loudspeaker used only when no headset is connected.
+- Owner-voice wake enforcement. When a profile is enrolled and enabled, the
+  wake service checks the recent microphone pre-roll and refuses a mismatched
+  voice with a visible notification. Manual taps remain available.
+- Live screen context with a real MediaProjection foreground service, a visible
+  stop action, 2-second downscaled JPEG frames, and an accessibility-screenshot
+  fallback if projection is unavailable.
+- Saved-history browser in the chat header, alongside the existing memory vault.
+- Optional signing-certificate pinning (`ZED_SIGNING_CERT_SHA256`) that blocks
+  creator master control when the installed certificate does not match.
+- Settings toggle for live screen context and updated owner-voice copy.
+
+### Changed
+
+- Version is `2.1.0` (`versionCode` 21).
+- Session teardown stops screen capture so sharing never outlives the
+  conversation that requested it.
+- Overlay long-press cancels an active multi-step task before falling back to
+  the conversation interrupt.
+
 ## [2.0.0] - 2026-11-04
 
 The first complete Z.E.D. release: a native voice partner with local creator

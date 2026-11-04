@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.zed.assistant.ai.ZedEngine
+import com.zed.assistant.audio.SpeakerVerifier
 import com.zed.assistant.audio.WakeWordDetector
 import com.zed.assistant.audio.VoskModelManager
 import com.zed.assistant.audio.ZedSoundEffects
@@ -163,8 +164,25 @@ class ZedWakeWordService : Service() {
           val triggered = detector?.accept(buffer, read) == true
           if (!triggered) continue
 
-          Log.i(TAG, "Wake word accepted; starting Zed")
+          Log.i(TAG, "Wake word accepted")
           val preferences = ZedPreferences(applicationContext)
+          if (preferences.isOwnerVoiceEnabled && preferences.hasOwnerVoiceProfile()) {
+            val match = SpeakerVerifier.verify(
+              detector?.recentAudio() ?: ByteArray(0),
+              preferences
+            )
+            if (!match.isMatch) {
+              Log.i(
+                TAG,
+                "Wake ignored: owner voice mismatch (similarity=${match.similarityPercent}%)"
+              )
+              updateNotification(
+                "Voice not recognized",
+                "Say the wake word again as the enrolled owner"
+              )
+              continue
+            }
+          }
           if (preferences.soundEffectsEnabled) ZedSoundEffects.wake()
           updateNotification("Waking Zed", "Opening a Gemini Live session")
           ZedEngine.start(applicationContext)

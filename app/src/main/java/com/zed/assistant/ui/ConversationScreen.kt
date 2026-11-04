@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,9 +30,12 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -51,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zed.assistant.data.ChatHistoryStore
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.model.ChatMessage
 import com.zed.assistant.ui.components.GlassCard
@@ -59,6 +65,8 @@ import com.zed.assistant.ui.components.GlassIconButton
 import com.zed.assistant.ui.components.LiquidBackground
 import com.zed.assistant.ui.theme.LocalZedPalette
 import com.zed.assistant.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Conversation screen: identity header, live turn bubbles, and a composer
@@ -75,6 +83,7 @@ fun ZedChatScreen(
   val userText by viewModel.userText.collectAsStateWithLifecycle()
   val zedText by viewModel.zedText.collectAsStateWithLifecycle()
   var draft by rememberSaveable { mutableStateOf("") }
+  var showHistory by rememberSaveable { mutableStateOf(false) }
   val listState = rememberLazyListState()
 
   fun send(message: String) {
@@ -111,8 +120,13 @@ fun ZedChatScreen(
       ChatHeader(
         state = state,
         onBack = onBack,
+        onHistory = { showHistory = true },
         onNew = viewModel::clearConversation
       )
+
+      if (showHistory) {
+        ChatHistoryDialog(onDismiss = { showHistory = false })
+      }
 
       if (rows.isEmpty()) {
         EmptyChatState(
@@ -152,6 +166,7 @@ fun ZedChatScreen(
 private fun ChatHeader(
   state: AssistantState,
   onBack: () -> Unit,
+  onHistory: () -> Unit,
   onNew: () -> Unit
 ) {
   val palette = LocalZedPalette.current
@@ -190,12 +205,107 @@ private fun ChatHeader(
         )
       }
     }
-    GlassIconButton(
-      icon = Icons.Rounded.Add,
-      contentDescription = "Start a new conversation",
-      onClick = onNew
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      GlassIconButton(
+        icon = Icons.Rounded.History,
+        contentDescription = "Saved conversation history",
+        onClick = onHistory
+      )
+      Spacer(modifier = Modifier.width(7.dp))
+      GlassIconButton(
+        icon = Icons.Rounded.Add,
+        contentDescription = "Start a new conversation",
+        onClick = onNew
+      )
+    }
   }
+}
+
+@Composable
+private fun ChatHistoryDialog(onDismiss: () -> Unit) {
+  val palette = LocalZedPalette.current
+  val context = LocalContext.current
+  val store = remember { ChatHistoryStore(context) }
+  var turns by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
+  var loading by remember { mutableStateOf(true) }
+
+  LaunchedEffect(Unit) {
+    turns = withContext(Dispatchers.IO) { store.recent(150) }
+    loading = false
+  }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("Saved history", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+    text = {
+      Column(modifier = Modifier.heightIn(max = 420.dp)) {
+        Text(
+          "Turns saved on this phone. Clearing this does not clear the open conversation or your memories.",
+          color = palette.textMuted,
+          fontSize = 11.sp,
+          lineHeight = 16.sp,
+          modifier = Modifier.padding(bottom = 8.dp)
+        )
+        if (loading) {
+          Text("Loading…", color = palette.textMuted, fontSize = 12.sp)
+        } else if (turns.isEmpty()) {
+          Text("No saved turns yet.", color = palette.textMuted, fontSize = 12.sp)
+        } else {
+          LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(turns, key = { index, turn -> "$index-${turn.role}-${turn.text.hashCode()}" }) { _, turn ->
+              Column(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(12.dp))
+                  .background(palette.card.copy(alpha = 0.55f))
+                  .padding(10.dp)
+              ) {
+                Text(
+                  text = if (turn.role == ChatMessage.Role.USER) "YOU" else "ZED",
+                  color = if (turn.role == ChatMessage.Role.USER) palette.textMuted else palette.accent,
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                )
+                Text(
+                  text = turn.text,
+                  color = palette.textPrimary,
+                  fontSize = 12.sp,
+                  lineHeight = 17.sp,
+                  modifier = Modifier.padding(top = 2.dp)
+                )
+              }
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      if (turns.isNotEmpty()) {
+        TextButton(
+          onClick = {
+            store.clear()
+            turns = emptyList()
+          }
+        ) {
+          Text("CLEAR SAVED", color = palette.error, fontWeight = FontWeight.Bold)
+        }
+      } else {
+        TextButton(onClick = onDismiss) {
+          Text("CLOSE", color = palette.accent, fontWeight = FontWeight.Bold)
+        }
+      }
+    },
+    dismissButton = {
+      if (turns.isNotEmpty()) {
+        TextButton(onClick = onDismiss) {
+          Text("CLOSE", color = palette.textMuted, fontWeight = FontWeight.Bold)
+        }
+      }
+    },
+    containerColor = palette.card,
+    shape = RoundedCornerShape(22.dp)
+  )
 }
 
 @Composable

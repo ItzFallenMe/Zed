@@ -14,9 +14,11 @@ import android.util.Log
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.zed.assistant.automation.ZedAccessibilityService
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -299,8 +301,16 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
     }
   }
 
-  /** Open a WhatsApp chat with the message prefilled; the user still taps send. */
-  suspend fun sendWhatsAppMessage(rawName: String, message: String): JSONObject {
+  /**
+   * Open a WhatsApp chat and, when [sendNow] is true, tap Send through the
+   * accessibility service. The result distinguishes a tapped send button from
+   * a prefilled chat the user still has to confirm.
+   */
+  suspend fun sendWhatsAppMessage(
+    rawName: String,
+    message: String,
+    sendNow: Boolean = false
+  ): JSONObject {
     val name = rawName.trim()
     val body = message.trim()
     if (name.length < 2) return failure("sendWhatsAppMessage", "invalid_contact_name")
@@ -343,14 +353,30 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
 
     whatsapp.setPackage(installed)
     val launched = launch(whatsapp) || launch(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    return if (launched) {
-      success("sendWhatsAppMessage") {
+    if (!launched) return failure("sendWhatsAppMessage", "whatsapp_launch_failed")
+
+    if (!sendNow) {
+      return success("sendWhatsAppMessage") {
         put("contactName", match.name)
         put("mode", "prefilled")
         put("note", "WhatsApp opened with the message ready; the user must confirm sending.")
       }
-    } else {
-      failure("sendWhatsAppMessage", "whatsapp_launch_failed")
+    }
+
+    withContext(Dispatchers.IO) { delay(1_800) }
+    val send = ZedAccessibilityService.clickSend()
+    return success("sendWhatsAppMessage") {
+      put("contactName", match.name)
+      put("mode", if (send.optBoolean("success")) "auto_send_tapped" else "prefilled")
+      put(
+        "note",
+        if (send.optBoolean("success")) {
+          "Send was tapped through accessibility; delivery is confirmed only by WhatsApp."
+        } else {
+          "The chat is ready, but the Send button could not be tapped automatically."
+        }
+      )
+      if (!send.optBoolean("success")) put("autoSendError", send.optString("error"))
     }
   }
 
@@ -363,6 +389,35 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
       success("searchYouTube") { put("query", query) }
     } else {
       failure("searchYouTube", "no_app_can_open_url")
+    }
+  }
+
+  /** Open YouTube results and tap the first matching video when accessibility is on. */
+  suspend fun playYouTube(rawQuery: String): JSONObject {
+    val query = rawQuery.trim()
+    if (query.isBlank()) return failure("playYouTube", "empty_query")
+    val url = "https://www.youtube.com/results?search_query=${Uri.encode(query)}"
+    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val installed = APP_PACKAGES.getValue("youtube").firstOrNull {
+      context.packageManager.getLaunchIntentForPackage(it) != null
+    }
+    if (installed != null) intent.setPackage(installed)
+    if (!launch(intent)) return failure("playYouTube", "no_app_can_open_url")
+
+    withContext(Dispatchers.IO) { delay(2_200) }
+    val click = ZedAccessibilityService.clickYouTubeResult(query)
+    return success("playYouTube") {
+      put("query", query)
+      put("mode", if (click.optBoolean("success")) "auto_play_tapped" else "results")
+      put(
+        "note",
+        if (click.optBoolean("success")) {
+          "The first matching video was tapped; use controlMedia to pause or skip."
+        } else {
+          "YouTube results are open; enable accessibility to auto-play a result."
+        }
+      )
+      if (!click.optBoolean("success")) put("autoPlayError", click.optString("error"))
     }
   }
 

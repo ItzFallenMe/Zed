@@ -22,6 +22,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
 import com.zed.assistant.ai.ZedEngine
+import com.zed.assistant.automation.AgentTaskEngine
 import com.zed.assistant.data.ZedPreferences
 import com.zed.assistant.model.AssistantState
 import kotlinx.coroutines.CoroutineScope
@@ -167,7 +168,8 @@ class ZedOverlayService : android.app.Service() {
         }
 
         override fun onLongPress(event: MotionEvent) {
-          if (ZedEngine.isActive.value) ZedEngine.interrupt()
+          if (AgentTaskEngine.isRunning) ZedEngine.cancelTask()
+          else if (ZedEngine.isActive.value) ZedEngine.interrupt()
         }
       }
     )

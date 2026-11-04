@@ -6,7 +6,7 @@
 
 [![Build](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml/badge.svg)](https://github.com/ItzFallenMe/Zed/actions/workflows/build-apk.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.0-8B5CF6.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.1-8B5CF6.svg)](CHANGELOG.md)
 ![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)
 
 </div>
@@ -43,7 +43,7 @@ to feel like a partner in the room, not a command line with a voice.
 
 ## What's new in 2.1
 
-Version 2.1.0 closes the advanced automation and presence gaps from 2.0.0:
+Version 2.1.1 includes the avatar and floating-overlay reliability fixes on top of the 2.1.0 automation and presence release:
 
 - **Multi-step tasks** through a bounded `runTask` tool, with per-step progress
   in the status line and overlay, and a stop-at-first-failure rule.

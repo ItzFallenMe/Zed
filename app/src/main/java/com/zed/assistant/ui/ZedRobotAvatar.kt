@@ -48,7 +48,6 @@ fun ZedRobotAvatar(
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   var webView by remember { mutableStateOf<WebView?>(null) }
   var pageReady by remember { mutableStateOf(false) }
-  var pageError by remember { mutableStateOf(false) }
 
   val currentOnTap by rememberUpdatedState(onTap)
   val currentOnLongPress by rememberUpdatedState(onLongPress)
@@ -86,17 +85,30 @@ fun ZedRobotAvatar(
           setOnLongClickListener { true }
           settings.apply {
             javaScriptEnabled = true
-            domStorageEnabled = true
+            domStorageEnabled = false
             allowFileAccess = true
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
             allowContentAccess = false
             blockNetworkLoads = true
             cacheMode = WebSettings.LOAD_NO_CACHE
             mediaPlaybackRequiresUserGesture = true
+            builtInZoomControls = false
+            displayZoomControls = false
+            setSupportZoom(false)
           }
           webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
               super.onPageFinished(view, url)
-              pageReady = true
+              if (url?.startsWith("file:///android_asset/robot-head/avatar.html") == true) {
+                view?.post {
+                  view.evaluateJavascript(
+                    "Boolean(window.__zedRobotReady && window.setRobotState)",
+                  ) { ready ->
+                    pageReady = ready == "true"
+                  }
+                }
+              }
             }
 
             override fun onReceivedError(
@@ -105,7 +117,10 @@ fun ZedRobotAvatar(
               error: android.webkit.WebResourceError?
             ) {
               super.onReceivedError(view, request, error)
-              if (request?.isForMainFrame == true) pageError = true
+              if (request?.isForMainFrame == true) {
+                pageReady = false
+                android.util.Log.e("ZedAvatar", "Avatar asset failed: ${error?.description}")
+              }
             }
 
             override fun shouldOverrideUrlLoading(
@@ -158,9 +173,7 @@ fun ZedRobotAvatar(
 
   LaunchedEffect(state, pageReady) {
     if (!pageReady) return@LaunchedEffect
-    webView?.evaluateJavascript(
-      "window.setRobotState && window.setRobotState('${state.filter { it.isLetter() }}');",
-      null
-    )
+    val safeState = state.filter { it.isLetter() }.take(24)
+    webView?.evaluateJavascript("window.setRobotState('$safeState');", null)
   }
 }

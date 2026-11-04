@@ -1052,8 +1052,14 @@ object ZedEngine {
   }
 
   private fun syncAvatar() {
-    if (avatarResetJob?.isActive == true) return
-    avatarState.value = if (!isActive.value && state.value == AssistantState.IDLE) "idle" else defaultAvatarState()
+    avatarResetJob?.cancel()
+    avatarState.value = if (!isActive.value && state.value == AssistantState.ERROR) {
+      "sleeping"
+    } else if (!isActive.value && state.value == AssistantState.IDLE) {
+      "idle"
+    } else {
+      defaultAvatarState()
+    }
   }
 
   /** Shows a transient avatar expression (happy/error) before returning to the current activity. */
@@ -1148,6 +1154,7 @@ object ZedEngine {
     if (state.value != newState) Log.d(TAG, "State ${state.value} -> $newState")
     state.value = newState
     idleSleepJob?.cancel()
+    avatarResetJob?.cancel()
     syncAvatar()
     if (newState == AssistantState.IDLE) {
       idleSleepJob = scope.launch {

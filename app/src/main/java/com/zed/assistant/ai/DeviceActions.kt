@@ -372,8 +372,10 @@ class DeviceActions(private val context: Context, private val contacts: Contacts
         "note",
         if (send.optBoolean("success")) {
           "Send was tapped through accessibility; delivery is confirmed only by WhatsApp."
+        } else if (send.optString("error") == "accessibility_service_not_connected") {
+          "The chat is ready, but Android has not connected Zed's enabled accessibility service yet. The message remains unsent."
         } else {
-          "The chat is ready, but the Send button could not be tapped automatically."
+          "The chat is ready, but the Send button could not be tapped automatically. The message remains unsent."
         }
       )
       if (!send.optBoolean("success")) put("autoSendError", send.optString("error"))

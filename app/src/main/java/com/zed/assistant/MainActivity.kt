@@ -22,7 +22,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import com.zed.assistant.ai.PermissionGateway
 import com.zed.assistant.overlay.ZedOverlayService
-import com.zed.assistant.ui.CreatorAccessDialog
 import com.zed.assistant.ui.SettingsScreen
 import com.zed.assistant.ui.ZedBottomDock
 import com.zed.assistant.ui.ZedChatScreen
@@ -96,21 +95,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ZedRoot(viewModel: MainViewModel) {
   val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-  val creatorPrompt by viewModel.creatorPrompt.collectAsStateWithLifecycle()
   ZedTheme(mode = themeMode) {
     Surface(
       modifier = Modifier.fillMaxSize(),
       color = MaterialTheme.colorScheme.background
     ) {
       ZedApp(viewModel)
-      creatorPrompt?.let { prompt ->
-        CreatorAccessDialog(
-          prompt = prompt,
-          onVerify = viewModel::verifyCreatorCode,
-          onUseVoice = viewModel::retryCreatorVoice,
-          onDismiss = viewModel::cancelCreatorChallenge
-        )
-      }
+
     }
   }
 }

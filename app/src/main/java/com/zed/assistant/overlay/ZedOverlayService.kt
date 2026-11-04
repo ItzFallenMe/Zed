@@ -6,7 +6,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.GestureDetector
@@ -20,11 +19,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.compose.ui.graphics.toArgb
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.automation.AgentTaskEngine
 import com.zed.assistant.data.ZedPreferences
-import com.zed.assistant.model.AssistantState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,7 +85,6 @@ class ZedOverlayService : android.app.Service() {
   private fun attach() {
     if (attached) return
     val preferences = ZedPreferences(this)
-    val density = resources.displayMetrics.density
     val sizeDp = if (preferences.overlayToy == ROBOT) 172 else 118
 
     val container = FrameLayout(this).apply {
@@ -101,18 +97,43 @@ class ZedOverlayService : android.app.Service() {
       setBackgroundColor(Color.TRANSPARENT)
       settings.apply {
         javaScriptEnabled = true
-        domStorageEnabled = true
+        domStorageEnabled = false
         allowFileAccess = true
+        allowFileAccessFromFileURLs = false
+        allowUniversalAccessFromFileURLs = false
         allowContentAccess = false
         blockNetworkLoads = true
         cacheMode = WebSettings.LOAD_NO_CACHE
         mediaPlaybackRequiresUserGesture = true
+        builtInZoomControls = false
+        displayZoomControls = false
+        setSupportZoom(false)
       }
       webViewClient = object : WebViewClient() {
         override fun onPageFinished(view: WebView?, url: String?) {
           super.onPageFinished(view, url)
-          pageReady = true
-          applyAvatarState(pendingState)
+          if (url?.startsWith("file:///android_asset/") != true) return
+          view?.post {
+            view.evaluateJavascript(
+              "Boolean(window.__zedRobotReady && window.setRobotState)",
+            ) { ready ->
+              pageReady = ready == "true"
+              if (pageReady) applyAvatarState(pendingState)
+              else Log.w(TAG, "Overlay avatar page loaded without renderer readiness")
+            }
+          }
+        }
+
+        override fun onReceivedError(
+          view: WebView?,
+          request: android.webkit.WebResourceRequest?,
+          error: android.webkit.WebResourceError?
+        ) {
+          super.onReceivedError(view, request, error)
+          if (request?.isForMainFrame == true) {
+            pageReady = false
+            Log.e(TAG, "Overlay avatar asset failed: ${error?.description}")
+          }
         }
       }
       loadUrl(avatarUrl(preferences.overlayToy))
@@ -151,7 +172,7 @@ class ZedOverlayService : android.app.Service() {
       dp(sizeDp + 24f),
       WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
       PixelFormat.TRANSLUCENT
     ).apply {
       gravity = Gravity.TOP or Gravity.END
@@ -245,8 +266,12 @@ class ZedOverlayService : android.app.Service() {
 
   private fun applyAvatarState(state: String) {
     val web = webView ?: return
-    if (!pageReady) return
-    web.evaluateJavascript("window.setRobotState && window.setRobotState('$state');", null)
+    if (!pageReady) {
+      pendingState = state
+      return
+    }
+    val safeState = state.filter { it.isLetter() }.take(24)
+    web.evaluateJavascript("window.setRobotState('$safeState');", null)
   }
 
   private fun avatarUrl(toy: String): String =

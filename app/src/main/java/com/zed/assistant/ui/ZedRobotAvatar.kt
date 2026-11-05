@@ -180,3 +180,10 @@ fun ZedRobotAvatar(
     webView?.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(style) + "); window.setRobotState('$safeState');", null)
   }
 }
+
+internal fun avatarOptionsFor(style: String): String = when (style) {
+  "circle" -> "{shape:'circle',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
+  "square" -> "{shape:'square',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
+  "hexagon" -> "{shape:'hexagon',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
+  else -> "{shape:'rectangle',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
+}

@@ -136,6 +136,7 @@ class ZedWakeWordService : Service() {
       }
 
       var record: AudioRecord? = null
+      var wakeTriggered = false
       try {
         record = try {
           AudioRecord(
@@ -160,7 +161,11 @@ class ZedWakeWordService : Service() {
 
         while (scope.isActive && !ZedEngine.isActive.value) {
           val read = record.read(buffer, 0, buffer.size)
-          if (read <= 0) continue
+          if (read == 0) continue
+          if (read < 0) {
+            Log.w(TAG, "AudioRecord read failed: $read")
+            break
+          }
           val triggered = detector?.accept(buffer, read) == true
           if (!triggered) continue
 
@@ -185,9 +190,7 @@ class ZedWakeWordService : Service() {
           }
           if (preferences.soundEffectsEnabled) ZedSoundEffects.wake()
           updateNotification("Waking Zed", "Opening a Gemini Live session")
-          ZedEngine.start(applicationContext, fromWakeWord = true)
-          // Wait for the session to take the mic, then release ours.
-          withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
+          wakeTriggered = true
           break
         }
       } catch (error: Exception) {
@@ -197,6 +200,18 @@ class ZedWakeWordService : Service() {
         listening.set(false)
         runCatching { record?.stop() }
         runCatching { record?.release() }
+      }
+
+      // Release wake-word AudioRecord before Gemini creates its own recorder.
+      // Starting Gemini inside this loop races for the microphone and can
+      // leave the Live session silent on devices that allow one input client.
+      if (wakeTriggered && scope.isActive) {
+        val preferences = ZedPreferences(applicationContext)
+        if (preferences.overlayEnabled && Settings.canDrawOverlays(applicationContext)) {
+          com.zed.assistant.overlay.ZedOverlayService.start(applicationContext)
+        }
+        ZedEngine.start(applicationContext, fromWakeWord = true)
+        withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
       }
       delay(200)
     }

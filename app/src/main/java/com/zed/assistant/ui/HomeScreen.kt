@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,12 +86,22 @@ fun ZedHomeScreen(
   val isActive by viewModel.isActive.collectAsStateWithLifecycle()
   val turns by viewModel.chatTurns.collectAsStateWithLifecycle()
   val avatarState by viewModel.avatarState.collectAsStateWithLifecycle()
-  val avatarStyle = remember { ZedPreferences(context).overlayToy }
+  val avatarStyleState = remember { mutableStateOf(ZedPreferences(context).overlayToy) }
   var showLanguageInfo by rememberSaveable { mutableStateOf(false) }
 
   val prefs = remember {
     context.getSharedPreferences(ZedEngine.PREFS, Context.MODE_PRIVATE)
   }
+  DisposableEffect(prefs) {
+    val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+      if (key == "overlay_toy") {
+        avatarStyleState.value = ZedPreferences(context).overlayToy
+      }
+    }
+    prefs.registerOnSharedPreferenceChangeListener(listener)
+    onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+  }
+  val avatarStyle = avatarStyleState.value
   val userName = prefs.getString(ZedEngine.KEY_USER_NAME, "").orEmpty()
   val model = prefs.getString(ZedEngine.KEY_MODEL, ZedEngine.DEFAULT_MODEL)
     .orEmpty()

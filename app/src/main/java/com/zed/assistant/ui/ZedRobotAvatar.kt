@@ -159,7 +159,7 @@ fun ZedRobotAvatar(
             view.resumeTimers()
             val resumedState = currentState.filter { it.isLetter() }.take(24)
             view.post {
-              view.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(currentStyle) + "); window.setRobotState('$resumedState');", null)
+              view.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(currentStyle, 252) + "); window.setRobotState('$resumedState');", null)
             }
           }
           Lifecycle.Event.ON_PAUSE -> {
@@ -181,13 +181,16 @@ fun ZedRobotAvatar(
   LaunchedEffect(state, style, pageReady) {
     if (!pageReady) return@LaunchedEffect
     val safeState = state.filter { it.isLetter() }.take(24)
-    webView?.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(style) + "); window.setRobotState('$safeState');", null)
+    webView?.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(style, 252) + "); window.setRobotState('$safeState');", null)
   }
 }
 
-internal fun avatarOptionsFor(style: String): String = when (style) {
-  "circle" -> "{shape:'circle',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
-  "square" -> "{shape:'square',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
-  "hexagon" -> "{shape:'hexagon',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
-  else -> "{shape:'rectangle',color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff'}"
+internal fun avatarOptionsFor(style: String, size: Int = 168): String {
+  val shape = when (style) {
+    "circle" -> "circle"
+    "square" -> "square"
+    "hexagon" -> "hexagon"
+    else -> "rectangle"
+  }
+  return "{shape:'$shape',size:$size,color:'#26384f',trimColor:'#8ca9c8',screenColor:'#dcecff',speed:1.0,interactive:true,floorShadow:true}"
 }

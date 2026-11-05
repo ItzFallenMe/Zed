@@ -159,7 +159,7 @@ class ZedWakeWordService : Service() {
         }
         record.startRecording()
         listening.set(true)
-        updateNotification("Listening for “Zed”", "Say “Zed” or “Hey Zed” to start")
+        updateNotification("Listening for “Zed”", "Say “Zed” to start")
 
         while (scope.isActive && !ZedEngine.isActive.value) {
           val read = record.read(buffer, 0, buffer.size)

@@ -43,11 +43,8 @@ class ZedPreferences(context: Context) {
 
     const val ROBOT_AVATAR = "robot-head"
 
-    val OVERLAY_TOYS = listOf(
-      ROBOT_AVATAR, "ghost", "alien", "blob", "cat", "circle", "cloud", "droid",
-      "drop", "flower", "hexagon", "mech", "pebble", "pill", "puddle", "square",
-      "star", "triangle"
-    )
+    // Shapes supported by the bundled offline robot renderer.
+    val OVERLAY_TOYS = listOf(ROBOT_AVATAR, "circle", "square", "hexagon")
   }
 
   var apiKey: String

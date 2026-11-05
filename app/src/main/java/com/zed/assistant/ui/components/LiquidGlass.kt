@@ -3,7 +3,10 @@ package com.zed.assistant.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -22,9 +25,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -108,14 +114,23 @@ fun GlassCard(
   content: @Composable ColumnScope.() -> Unit
 ) {
   val palette = LocalZedPalette.current
+  val interactionSource = remember { MutableInteractionSource() }
+  val pressed by interactionSource.collectIsPressedAsState()
+  val pressScale by animateFloatAsState(
+    targetValue = if (pressed) 0.985f else 1f,
+    label = "glassCardPress"
+  )
   val interaction = if (onClick != null) {
-    Modifier.clickable(role = Role.Button, onClick = onClick)
-  } else {
-    Modifier
-  }
+    Modifier.clickable(
+      interactionSource = interactionSource,
+      indication = null,
+      role = Role.Button,
+      onClick = onClick
+    )
+  } else Modifier
   if (!LocalLiquidGlassEnabled.current) {
     Surface(
-      modifier = modifier.then(interaction),
+      modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.then(interaction),
       shape = shape,
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -126,6 +141,7 @@ fun GlassCard(
   }
   Column(
     modifier = modifier
+      .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
       .shadow(10.dp, shape, clip = false)
       .clip(shape)
       .background(
@@ -149,8 +165,15 @@ fun GlassIconButton(
 ) {
   val palette = LocalZedPalette.current
   val liquid = LocalLiquidGlassEnabled.current
+  val interactionSource = remember { MutableInteractionSource() }
+  val pressed by interactionSource.collectIsPressedAsState()
+  val pressScale by animateFloatAsState(
+    targetValue = if (pressed) 0.92f else 1f,
+    label = "glassIconPress"
+  )
   Box(
     modifier = modifier
+      .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
       .size(46.dp)
       .clip(RoundedCornerShape(15.dp))
       .background(
@@ -169,7 +192,7 @@ fun GlassIconButton(
         if (liquid) palette.cardBorder.copy(alpha = 0.75f) else MaterialTheme.colorScheme.outlineVariant,
         RoundedCornerShape(15.dp)
       )
-      .clickable(role = Role.Button, onClick = onClick),
+      .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClick),
     contentAlignment = Alignment.Center
   ) {
     Icon(

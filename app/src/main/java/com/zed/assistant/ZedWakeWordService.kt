@@ -209,10 +209,13 @@ class ZedWakeWordService : Service() {
       // leave the Live session silent on devices that allow one input client.
       if (wakeTriggered && scope.isActive) {
         val preferences = ZedPreferences(applicationContext)
-        val roleManager = if (android.os.Build.VERSION.SDK_INT >= 29) {
-          getSystemService(RoleManager::class.java)
-        } else null
-        val isDefaultAssistant = roleManager?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+        val isDefaultAssistant =
+          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            getSystemService(RoleManager::class.java)
+              ?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+          } else {
+            false
+          }
         val sessionShown = isDefaultAssistant &&
           com.zed.assistant.voice.ZedVoiceInteractionService.requestShow(fromWakeWord = true)
 

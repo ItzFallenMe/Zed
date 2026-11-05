@@ -83,14 +83,9 @@ class WakeWordDetector(private val model: Model) {
       .filter { it.isNotBlank() }
     if (words.isEmpty()) return false
 
-    for (index in words.indices) {
-      val word = words[index]
-      val isName = word in NAME_VARIANTS
-      if (!isName) continue
-      if (index == 0) return true
-      if (words[index - 1] in WAKE_PREFIXES) return true
-    }
-    return false
+    // The requested wake phrase is the single word "Zed" — no "Hey",
+    // "Okay", or other prefix is required.
+    return words.any { it == "zed" }
   }
 
   private companion object {
@@ -99,7 +94,5 @@ class WakeWordDetector(private val model: Model) {
     const val DEBOUNCE_MS = 3_000L
     const val HISTORY_BYTES = 16_000 * 2 * 6 // six seconds of 16-bit mono
 
-    val NAME_VARIANTS = setOf("zed", "zad", "sed", "said", "set")
-    val WAKE_PREFIXES = setOf("hey", "ok", "okay", "yo", "hi", "hello")
   }
 }

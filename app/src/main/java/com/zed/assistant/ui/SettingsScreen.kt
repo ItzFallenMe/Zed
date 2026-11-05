@@ -7,6 +7,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
+import android.app.role.RoleManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -217,10 +218,31 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(18.dp))
         SectionLabel("HANDS-FREE & PRESENCE")
         SettingsGroup {
+          SettingRow(
+            icon = Icons.Rounded.Phone,
+            title = "Default system assistant",
+            subtitle = if (android.os.Build.VERSION.SDK_INT >= 29 &&
+              context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+            ) "Zed is selected · system assistant panel enabled"
+            else "Choose Zed for the system assistant overlay",
+            onClick = {
+              if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val roleManager = context.getSystemService(RoleManager::class.java)
+                if (roleManager?.isRoleAvailable(RoleManager.ROLE_ASSISTANT) == true) {
+                  context.startActivity(roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT))
+                } else {
+                  Toast.makeText(context, "This Android version does not expose the assistant role.", Toast.LENGTH_LONG).show()
+                }
+              } else {
+                Toast.makeText(context, "System assistant role selection requires Android 10 or newer.", Toast.LENGTH_LONG).show()
+              }
+            }
+          )
+          GroupDivider()
           SettingToggleRow(
             icon = Icons.Rounded.RecordVoiceOver,
             title = "Wake word",
-            subtitle = "Say “Zed” or “Hey Zed” · processed offline",
+            subtitle = "Say “Zed” · processed offline",
             checked = wakeWordEnabled,
             onCheckedChange = { enabled ->
               if (!enabled) {

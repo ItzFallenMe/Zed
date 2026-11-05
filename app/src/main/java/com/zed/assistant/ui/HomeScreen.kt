@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zed.assistant.R
 import com.zed.assistant.ai.ZedEngine
+import com.zed.assistant.data.ZedPreferences
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.ui.components.GlassCard
 import com.zed.assistant.ui.components.GlassIconButton
@@ -84,6 +85,7 @@ fun ZedHomeScreen(
   val isActive by viewModel.isActive.collectAsStateWithLifecycle()
   val turns by viewModel.chatTurns.collectAsStateWithLifecycle()
   val avatarState by viewModel.avatarState.collectAsStateWithLifecycle()
+  val avatarStyle = remember { ZedPreferences(context).overlayToy }
   var showLanguageInfo by rememberSaveable { mutableStateOf(false) }
 
   val prefs = remember {
@@ -118,6 +120,7 @@ fun ZedHomeScreen(
         OrbHalo(modifier = Modifier.fillMaxSize())
         ZedRobotAvatar(
           state = avatarState,
+          style = avatarStyle,
           onTap = { viewModel.toggleSession() },
           onLongPress = { viewModel.interrupt() },
           modifier = Modifier.fillMaxSize()

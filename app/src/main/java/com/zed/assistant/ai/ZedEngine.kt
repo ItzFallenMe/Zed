@@ -444,6 +444,10 @@ object ZedEngine {
     override fun onUserTranscript(text: String, isFinal: Boolean) {
       userText.value = text
       if (text.isNotBlank()) lastSubmittedText = text
+      if (isFinal && isEndConversationCommand(text)) {
+        Log.i(TAG, "Voice command ended the current conversation")
+        stop()
+      }
     }
 
     override fun onZedTranscript(text: String) {
@@ -871,6 +875,21 @@ object ZedEngine {
   }
 
   private val SEARCH_TOOLS = setOf("searchYouTube", "inspectScreen", "lookAtScreen", "getWeather")
+
+  private fun isEndConversationCommand(text: String): Boolean {
+    val normalized = text.lowercase(java.util.Locale.ROOT)
+      .replace(Regex("[^a-z0-9 ]"), " ")
+      .trim()
+      .replace(Regex("\\s+"), " ")
+    return normalized in setOf(
+      "end this conversation",
+      "end the conversation",
+      "close this conversation",
+      "stop this conversation",
+      "goodbye zed",
+      "bye zed"
+    )
+  }
 
   private fun defaultAvatarState(): String = when (state.value) {
     AssistantState.IDLE -> "idle"

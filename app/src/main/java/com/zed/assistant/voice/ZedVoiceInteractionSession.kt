@@ -30,6 +30,7 @@ class ZedVoiceInteractionSession(context: Context) : VoiceInteractionSession(con
   private var avatarView: WebView? = null
   private var refreshTask: Runnable? = null
   private var refreshToken = 0
+  private var observedActiveSession = false
 
   @SuppressLint("SetJavaScriptEnabled")
   override fun onCreateContentView(): View {
@@ -129,6 +130,12 @@ class ZedVoiceInteractionSession(context: Context) : VoiceInteractionSession(con
   override fun onHide() {
     stopRefresh()
     ZedEngine.stop()
+    observedActiveSession = false
+    super.onHide()
+  }
+
+  override fun onDestroy() {
+    stopRefresh()
     avatarView?.apply {
       stopLoading()
       loadUrl("about:blank")
@@ -139,15 +146,22 @@ class ZedVoiceInteractionSession(context: Context) : VoiceInteractionSession(con
     statusView = null
     userView = null
     zedView = null
-    super.onHide()
+    super.onDestroy()
   }
-
   private fun startRefresh() {
     stopRefresh()
     val token = ++refreshToken
+    observedActiveSession = ZedEngine.isActive.value
     val task = object : Runnable {
       override fun run() {
         if (token != refreshToken || root == null) return
+        val active = ZedEngine.isActive.value
+        if (active) observedActiveSession = true
+        if (observedActiveSession && !active) {
+          observedActiveSession = false
+          finish()
+          return
+        }
         statusView?.text = ZedEngine.status.value
         val user = ZedEngine.userText.value
         val assistant = ZedEngine.zedText.value

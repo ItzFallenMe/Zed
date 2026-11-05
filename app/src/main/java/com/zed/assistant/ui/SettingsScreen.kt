@@ -162,7 +162,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         modifier = Modifier
           .weight(1f)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp)
+          .padding(start = 18.dp, end = 18.dp, bottom = 104.dp)
       ) {
         ProfileCard(
           userName = userName,

@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 @Composable
 fun ZedRobotAvatar(
   state: String,
+  style: String = "robot-head",
   onTap: () -> Unit,
   onLongPress: () -> Unit,
   modifier: Modifier = Modifier
@@ -51,6 +52,8 @@ fun ZedRobotAvatar(
 
   val currentOnTap by rememberUpdatedState(onTap)
   val currentOnLongPress by rememberUpdatedState(onLongPress)
+  val currentState by rememberUpdatedState(state)
+  val currentStyle by rememberUpdatedState(style)
   val gestureDetector = remember(context) {
     GestureDetector(
       context,
@@ -171,9 +174,9 @@ fun ZedRobotAvatar(
     }
   }
 
-  LaunchedEffect(state, pageReady) {
+  LaunchedEffect(state, style, pageReady) {
     if (!pageReady) return@LaunchedEffect
     val safeState = state.filter { it.isLetter() }.take(24)
-    webView?.evaluateJavascript("window.setRobotState('$safeState');", null)
+    webView?.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(style) + "); window.setRobotState('$safeState');", null)
   }
 }

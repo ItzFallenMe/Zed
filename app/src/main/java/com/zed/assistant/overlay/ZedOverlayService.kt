@@ -22,6 +22,7 @@ import android.widget.TextView
 import com.zed.assistant.ai.ZedEngine
 import com.zed.assistant.automation.AgentTaskEngine
 import com.zed.assistant.data.ZedPreferences
+import com.zed.assistant.ui.avatarOptionsFor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -120,7 +121,10 @@ class ZedOverlayService : android.app.Service() {
               "Boolean(window.__zedRobotReady && window.setRobotState)",
             ) { ready ->
               pageReady = ready == "true"
-              if (pageReady) applyAvatarState(pendingState)
+              if (pageReady) {
+                view?.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(preferences.overlayToy) + ");", null)
+                applyAvatarState(pendingState)
+              }
               else Log.w(TAG, "Overlay avatar page loaded without renderer readiness")
             }
           }
@@ -273,7 +277,7 @@ class ZedOverlayService : android.app.Service() {
       return
     }
     val safeState = state.filter { it.isLetter() }.take(24)
-    web.evaluateJavascript("window.setRobotState('$safeState');", null)
+    web.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(ZedPreferences(this).overlayToy) + "); window.setRobotState('$safeState');", null)
   }
 
   private fun avatarUrl(toy: String): String {

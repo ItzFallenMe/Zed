@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -106,7 +107,7 @@ class ZedWakeWordService : Service() {
     }
     detector = WakeWordDetector(model)
     _isRunning.value = true
-    updateNotification("Listening for “Zed”", "Say “Zed” or “Hey Zed” to start")
+    updateNotification("Listening for “Zed”", "Say “Zed” to start")
 
     val minimum = AudioRecord.getMinBufferSize(
       SAMPLE_RATE,
@@ -208,11 +209,24 @@ class ZedWakeWordService : Service() {
       // leave the Live session silent on devices that allow one input client.
       if (wakeTriggered && scope.isActive) {
         val preferences = ZedPreferences(applicationContext)
-        if (preferences.overlayEnabled && Settings.canDrawOverlays(applicationContext)) {
-          com.zed.assistant.overlay.ZedOverlayService.start(applicationContext)
+        val roleManager = if (android.os.Build.VERSION.SDK_INT >= 29) {
+          getSystemService(RoleManager::class.java)
+        } else null
+        val isDefaultAssistant = roleManager?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+        val sessionShown = isDefaultAssistant &&
+          com.zed.assistant.voice.ZedVoiceInteractionService.requestShow(fromWakeWord = true)
+
+        if (!sessionShown) {
+          // Fallback for devices/versions where Zed is not the selected system assistant.
+          if (preferences.overlayEnabled && Settings.canDrawOverlays(applicationContext)) {
+            com.zed.assistant.overlay.ZedOverlayService.start(applicationContext)
+          }
+          ZedEngine.start(applicationContext, fromWakeWord = true)
+          withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
+        } else {
+          // The system-managed session starts ZedEngine after its panel is shown.
+          withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
         }
-        ZedEngine.start(applicationContext, fromWakeWord = true)
-        withTimeoutOrNull(8_000L) { ZedEngine.isActive.first { it } }
       }
       delay(200)
     }

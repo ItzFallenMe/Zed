@@ -110,7 +110,7 @@ fun OwnerVoiceDialog(
               modifier = Modifier.padding(start = 10.dp)
             )
           }
-        } else {
+        } else if (vectors.size < 3) {
           TextButton(
             onClick = {
               scope.launch {
@@ -149,7 +149,7 @@ fun OwnerVoiceDialog(
                   return@launch
                 }
 
-                val updated = vectors + vector
+                val updated = (vectors + vector).take(3)
                 vectors = updated
                 if (updated.size >= 3) {
                   val centroid = SpeakerVerifier.centroid(updated)

@@ -46,10 +46,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
 import com.zed.assistant.model.AssistantState
 import com.zed.assistant.ui.components.StatusDot
 import com.zed.assistant.ui.theme.LocalLiquidGlassEnabled
@@ -66,7 +62,6 @@ enum class ZedTab {
 fun BoxScope.ZedBottomDock(
   selectedTab: ZedTab,
   state: AssistantState,
-  backdrop: Backdrop,
   onTabSelected: (ZedTab) -> Unit,
   onMicClick: () -> Unit,
   onMicLongClick: () -> Unit
@@ -124,22 +119,16 @@ fun BoxScope.ZedBottomDock(
         modifier = Modifier
           .fillMaxSize()
           .clip(dockShape)
-          .then(
-            if (liquid) {
-              Modifier.drawBackdrop(
-                backdrop = backdrop,
-                shape = { dockShape },
-                effects = {
-                  vibrancy()
-                  blur(8.dp.toPx())
-                },
-                onDrawSurface = {
-                  drawRect(palette.dockStart.copy(alpha = 0.34f))
-                }
+          .background(
+            Brush.verticalGradient(
+              if (liquid) listOf(
+                palette.dockStart.copy(alpha = 0.88f),
+                palette.dockEnd.copy(alpha = 0.94f)
+              ) else listOf(
+                MaterialTheme.colorScheme.surface,
+                MaterialTheme.colorScheme.surface
               )
-            } else {
-              Modifier.background(MaterialTheme.colorScheme.surface)
-            }
+            )
           )
           .border(
             1.dp,

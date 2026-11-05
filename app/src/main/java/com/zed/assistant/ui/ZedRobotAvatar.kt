@@ -157,6 +157,10 @@ fun ZedRobotAvatar(
           Lifecycle.Event.ON_RESUME -> {
             view.onResume()
             view.resumeTimers()
+            val resumedState = currentState.filter { it.isLetter() }.take(24)
+            view.post {
+              view.evaluateJavascript("window.setRobotOptions(" + avatarOptionsFor(currentStyle) + "); window.setRobotState('$resumedState');", null)
+            }
           }
           Lifecycle.Event.ON_PAUSE -> {
             view.onPause()

@@ -415,7 +415,12 @@ object ZedEngine {
       startScreenContext()
       if (wakeWordGreetingPending) {
         wakeWordGreetingPending = false
-        client?.sendText("Say exactly: Yes, boss.")
+        client?.sendText(
+          "Open this newly activated voice conversation with a natural, brief greeting that fits the time " +
+            "and the user's recent context when available. Speak in your own voice and personality. " +
+            "Do not use a fixed catchphrase, do not announce that you are an AI, and avoid a generic " +
+            "'How can I help?' unless it genuinely fits. Then pause and listen."
+        )
       }
       dispatchQueuedText()
     }

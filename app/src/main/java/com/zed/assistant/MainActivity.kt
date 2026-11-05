@@ -9,8 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -118,7 +116,7 @@ private fun ZedApp(viewModel: MainViewModel) {
     selectedTabIndex = 0
   }
 
-  val backdrop = rememberLayerBackdrop {\n    drawRect(MaterialTheme.colorScheme.background)\n    drawContent()\n  }\n\n  Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+  Box(modifier = Modifier.fillMaxSize()) {
     when (selectedTab) {
       ZedTab.HOME -> ZedHomeScreen(
         viewModel = viewModel,
